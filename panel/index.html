@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Conducar — Panel de Conversaciones</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f0f2f5; color: #1f2933; height: 100vh; overflow: hidden; }
+  header { background: #1f2933; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; height: 54px; }
+  header h1 { font-size: 17px; font-weight: 600; }
+  header .head-right { display: flex; align-items: center; gap: 14px; }
+  header .stats { display: flex; gap: 10px; font-size: 12px; }
+  header .stat { background: rgba(255,255,255,.1); padding: 4px 10px; border-radius: 99px; }
+  header .stat b { margin-right: 4px; }
+  .workspace { display: flex; height: calc(100vh - 54px - 45px); }
+  /* ---- Sidebar ---- */
+  .sidebar { width: 320px; min-width: 280px; background: #fff; border-right: 1px solid #e4e7eb; display: flex; flex-direction: column; }
+  .sidebar .search { padding: 12px; border-bottom: 1px solid #eef1f4; }
+  .sidebar .search input { width: 100%; padding: 9px 12px; border: 1px solid #e4e7eb; border-radius: 8px; font-size: 13px; outline: none; }
+  .sidebar .search input:focus { border-color: #2563eb; }
+  .conv-item { padding: 12px 14px; border-bottom: 1px solid #f0f2f5; cursor: pointer; display: flex; gap: 12px; align-items: center; transition: background .12s; }
+  .conv-item:hover { background: #f7f8fa; }
+  .conv-item.active { background: #eef3ff; }
+  .avatar { width: 42px; height: 42px; border-radius: 50%; background: #2563eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+  .conv-body { flex: 1; min-width: 0; }
+  .conv-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .conv-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-time { font-size: 11px; color: #9aa5b1; flex-shrink: 0; }
+  .conv-preview { font-size: 12px; color: #7b8794; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .conv-preview.out { color: #2563eb; }
+  .ticket-dot { display: inline-block; margin-top: 4px; font-size: 10px; padding: 2px 7px; border-radius: 99px; background: #fef3c7; color: #92400e; font-weight: 600; }
+  .ticket-dot.open { background: #dbeafe; color: #1e40af; }
+  /* ---- Pane ---- */
+  .pane { flex: 1; display: flex; flex-direction: column; background: #efeae2; min-width: 0; }  .pane-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: #9aa5b1; font-size: 15px; }
+  .pane-header { background: #fff; border-bottom: 1px solid #e4e7eb; padding: 10px 18px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pane-header .contact { display: flex; align-items: center; gap: 10px; }
+  .pane-header .contact .avatar { width: 34px; height: 34px; font-size: 14px; }
+  .pane-header .contact .name { font-weight: 600; font-size: 14px; }
+  .pane-header .contact .sub { font-size: 11px; color: #7b8794; }
+  .ticket-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: 11px; padding: 3px 9px; border-radius: 99px; font-weight: 600; }
+  .chip.pending { background: #fef3c7; color: #92400e; }
+  .chip.open { background: #dbeafe; color: #1e40af; }
+  .chip.confirmed { background: #dcfce7; color: #166534; }
+  .pane-actions { display: flex; gap: 6px; }
+  /* ---- Chat ---- */
+  .chat { flex: 1; overflow-y: auto; min-height: 0; padding: 16px 20px; display: flex; flex-direction: column; gap: 5px; }
+  .bubble { max-width: 62%; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.4; word-wrap: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); white-space: pre-wrap; position: relative; }
+  .bubble.in { align-self: flex-start; background: #fff; border-top-left-radius: 3px; }
+  .bubble.out { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 3px; }
+  .bubble .time { display: block; font-size: 10px; color: #8a949e; text-align: right; margin-top: 3px; }
+  .chat .empty { align-self: center; color: #6b7280; font-size: 13px; margin-top: 40px; }
+  .day-divider { align-self: center; background: #fff; border-radius: 99px; padding: 3px 12px; font-size: 11px; color: #7b8794; box-shadow: 0 1px 1px rgba(0,0,0,.06); margin: 8px 0; }
+  /* ---- Reply bar ---- */
+  .reply-bar { background: #fff; border-top: 1px solid #e4e7eb; padding: 10px 14px; display: flex; gap: 10px; align-items: flex-end; }
+  .reply-bar textarea { flex: 1; resize: none; border: 1px solid #e4e7eb; border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 13.5px; max-height: 110px; min-height: 40px; outline: none; }
+  .reply-bar textarea:focus { border-color: #2563eb; }
+  .btn { border: none; padding: 9px 14px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 13px; }
+  .btn.primary { background: #16a34a; color: #fff; }
+  .btn.danger { background: #dc2626; color: #fff; }
+  .btn.gray { background: #e5e7eb; color: #1f2933; }
+  .btn.blue { background: #2563eb; color: #fff; }
+  .btn.send { background: #2563eb; color: #fff; border-radius: 50%; width: 42px; height: 42px; padding: 0; font-size: 18px; flex-shrink: 0; }
+  .login { max-width: 340px; margin: 14vh auto; background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  .login h2 { margin-bottom: 14px; font-size: 17px; }
+  .login input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #d1d5db; border-radius: 8px; }
+  .error-msg { color: #dc2626; font-size: 12px; margin-top: 8px; }
+  .tabs { display: flex; background: #fff; border-bottom: 1px solid #e4e7eb; }
+  .tab { flex: 1; padding: 12px; background: none; border: none; border-bottom: 3px solid transparent; font-weight: 600; font-size: 13px; color: #7b8794; cursor: pointer; }
+  .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .list-view { height: calc(100vh - 54px - 45px); overflow-y: auto; background: #fff; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.data th { text-align: left; padding: 10px 14px; background: #f7f8fa; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #e4e7eb; position: sticky; top: 0; }
+  table.data td { padding: 10px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+  .badge.open { background: #dbeafe; color: #1e40af; }
+  .badge.resolved { background: #dcfce7; color: #166534; }
+  .badge.closed { background: #e5e7eb; color: #374151; }
+  .badge.confirm { background: #dcfce7; color: #166534; }
+  .badge.cancel { background: #fee2e2; color: #b91c1c; }
+  .badge.reply { background: #dbeafe; color: #1e40af; }
+  .badge.close { background: #e5e7eb; color: #374151; }
+  .badge.resolve { background: #dcfce7; color: #166534; }
+  .action-link { background: none; border: none; color: #2563eb; cursor: pointer; font-weight: 600; font-size: 12px; margin-right: 8px; }
+  .action-link.danger { color: #dc2626; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Conducar — Panel de Conversaciones</h1>
+  <div class="head-right">
+    <div class="stats">
+      <div class="stat"><b id="stPending">0</b>Pendientes</div>
+      <div class="stat"><b id="stOpen">0</b>En atención</div>
+      <div class="stat"><b id="stClosed">0</b>Cerrados</div>
+    </div>
+    <button class="btn gray" id="logout" style="display:none">Salir</button>
+  </div>
+</header>
+
+<div class="login" id="login">
+  <h2>Acceso operador</h2>
+  <input id="user" placeholder="Usuario" autocomplete="username" />
+  <input id="pass" type="password" placeholder="Contraseña" autocomplete="current-password" />
+  <button class="btn blue" id="loginBtn" style="width:100%">Ingresar</button>
+  <p class="error-msg" id="loginErr"></p>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-tab="conversations">Conversaciones</button>
+  <button class="tab" data-tab="history">Histórico</button>
+  <button class="tab" data-tab="complaints">Reclamos</button>
+</div>
+
+<div id="app" style="display:none">
+  <div id="viewConversations">
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="search"><input id="searchInput" placeholder="Buscar por número o nombre..." /></div>
+      <div id="convList" style="flex:1; overflow-y:auto; min-height:0;"></div>
+    </aside>
+    <section class="pane" id="pane">
+      <div class="pane-placeholder" id="panePlaceholder">Selecciona una conversación</div>
+      <div id="paneContent" style="display:none; flex:1; flex-direction:column; min-height:0; min-width:0;">
+        <div class="pane-header" id="paneHeader"></div>
+        <div class="chat" id="chatBox"></div>
+        <div class="reply-bar">
+          <textarea id="replyInput" placeholder="Escribe tu respuesta... (Enter para enviar)"></textarea>
+          <button class="btn send" id="sendBtn" title="Enviar">➤</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  </div>
+  <div id="viewHistory" class="list-view" style="display:none"></div>
+  <div id="viewComplaints" class="list-view" style="display:none">
+    <div style="padding:10px 14px; background:#fff; border-bottom:1px solid #e4e7eb; display:flex; gap:8px; align-items:center; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
+      <button class="btn blue" id="newComplaintBtn">➕ Crear reclamo</button>
+      <div id="complaintForm" style="display:none; gap:8px; flex:1; flex-wrap:wrap; align-items:center;">
+        <input id="cPhone" placeholder="Teléfono (ej. 51999999999)" style="padding:8px; border:1px solid #e4e7eb; border-radius:8px; font-size:13px; min-width:170px;" />
+        <select id="cType" style="padding:8px; border:1px solid #e4e7eb; border-radius:8px; font-size:13px;">
+          <option value="reclamo">Reclamo</option>
+          <option value="queja">Queja</option>
+          <option value="sugerencia">Sugerencia</option>
+        </select>
+        <input id="cDesc" placeholder="Descripción" style="padding:8px; border:1px solid #e4e7eb; border-radius:8px; font-size:13px; flex:3; min-width:220px;" />
+        <input id="cSol" placeholder="Solución esperada (opcional)" style="padding:8px; border:1px solid #e4e7eb; border-radius:8px; font-size:13px; min-width:170px;" />
+        <button class="btn primary" id="cSave">Guardar</button>
+        <button class="btn gray" id="cCancel">Cancelar</button>
+      </div>
+    </div>
+    <div id="complaintsList" style="overflow-y:auto; min-height:0;"></div>
+  </div>
+</div>
+
+<script>
+const state = { token: "", conversations: [], selectedPhone: "", chatTimer: null };
+
+function api(path, method = "GET", body = null) {
+  const opts = { method, headers: {} };
+  if (state.token) opts.headers["Authorization"] = "Bearer " + state.token;
+  if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  return fetch("/api" + path, opts).then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ("Error " + r.status));
+    return data;
+  });
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+
+const REASON_LABEL = {
+  NO_SOLUTION: "Sin solución", PAYMENT: "Pago", TRAMITE: "Trámite", CANCEL: "Cancelación",
+  REPROGRAM: "Reprogramación", NO_SHOW: "No asistió", RECATEGORIZATION: "Recategorización",
+  UPGRADE: "Cambio a mayor valor", OTHER: "Otro"
+};
+
+function avatarChar(c) {
+  const n = (c.name || c.phone || "?").trim();
+  return esc(n[0] ? n[0].toUpperCase() : "?");
+}
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" });
+}
+
+function lastPreview(c) {
+  const t = c.last?.text;
+  if (!t) return "Sin mensajes";
+  return (c.last.direction === "OUT" ? "Tú: " : "") + t;
+}
+
+function renderStats() {
+  api("/stats").then(s => {
+    document.getElementById("stPending").textContent = s.pending;
+    document.getElementById("stOpen").textContent = s.open;
+    document.getElementById("stClosed").textContent = s.closed;
+  }).catch(() => {});
+}
+
+function renderConversations() {
+  api("/conversations").then(list => {
+    state.conversations = list;
+    const q = document.getElementById("searchInput").value.trim().toLowerCase();
+    const box = document.getElementById("convList");
+    const filtered = q ? list.filter(c => (c.phone + " " + (c.name || "")).toLowerCase().includes(q)) : list;
+    if (!filtered.length) { box.innerHTML = '<div style="padding:20px;color:#9aa5b1;font-size:13px;text-align:center;">No hay conversaciones</div>'; return; }
+    box.innerHTML = filtered.map(c => {
+      const active = c.phone === state.selectedPhone ? "active" : "";
+      const ticketChip = c.ticket ? `<span class="ticket-dot ${c.ticket.status.toLowerCase()}">${REASON_LABEL[c.ticket.reason] || c.ticket.reason}</span>` : "";
+      return `<div class="conv-item ${active}" onclick="selectConversation('${c.phone}')">
+        <div class="avatar">${avatarChar(c)}</div>
+        <div class="conv-body">
+          <div class="conv-top">
+            <div class="conv-name">${esc(c.name || c.phone)}</div>
+            <div class="conv-time">${c.last ? fmtTime(c.last.createdAt) : ""}</div>
+          </div>
+          <div class="conv-preview ${c.last?.direction === "OUT" ? "out" : ""}">${esc(lastPreview(c))}</div>
+          ${ticketChip}
+        </div>
+      </div>`;
+    }).join("");
+  }).catch(() => {});
+}
+
+function bubbleHtml(m) {
+  const cls = m.direction === "IN" ? "in" : "out";
+  const time = new Date(m.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  const text = m.text || (m.mediaType ? `[${m.mediaType}]` : "");
+  return `<div class="bubble ${cls}">${esc(text)}<span class="time">${time}</span></div>`;
+}
+
+async function renderChat() {
+  const phone = state.selectedPhone;
+  if (!phone) return;
+  const box = document.getElementById("chatBox");
+  const before = box.scrollHeight - box.scrollTop;
+  try {
+    const msgs = await api("/messages/" + phone);
+    if (!msgs.length) { box.innerHTML = '<div class="empty">Sin mensajes registrados.</div>'; return; }
+    box.innerHTML = msgs.map(bubbleHtml).join("");
+    if (box.scrollHeight - box.scrollTop < 40 || before < 120) box.scrollTop = box.scrollHeight;
+    else box.scrollTop = box.scrollHeight - before;
+  } catch (e) {}
+}
+
+function reservationText(t) {
+  if (!t) return "";
+  const r = t.reservation;
+  if (!r) return "";
+  const serv = r.activity === "SIMULACRO" ? "simulacro" : "práctica";
+  const circ = r.circuit === "OFFICIAL" ? "oficial" : "alternativo";
+  return `#${r.id} · ${r.category} ${serv} · ${circ} · ${new Date(r.date).toLocaleDateString()} ${r.startTime}-${r.endTime} · S/${r.price} · ${r.status}`;
+}
+
+function renderPaneHeader(c) {
+  const actions = [];
+  if (c.ticket && c.ticket.status !== "CLOSED") {
+    actions.push(`<button class="btn primary" onclick="doConfirm('${c.ticket.id}')">Confirmar</button>`);
+    actions.push(`<button class="btn danger" onclick="doCancel('${c.ticket.id}')">Cancelar</button>`);
+    actions.push(`<button class="btn gray" onclick="doClose('${c.ticket.id}')">Cerrar ticket</button>`);
+  }
+  const chip = c.ticket
+    ? `<span class="chip ${c.ticket.status.toLowerCase()}">${REASON_LABEL[c.ticket.reason] || c.ticket.reason}</span>`
+    : `<span class="chip open">Cliente directo</span>`;
+  const resInfo = reservationText(c.ticket);
+  document.getElementById("paneHeader").innerHTML = `
+    <div class="contact">
+      <div class="avatar">${avatarChar(c)}</div>
+      <div>
+        <div class="name">${esc(c.name || c.phone)}</div>
+        <div class="sub">${resInfo ? esc(resInfo) : (c.phone + " · " + c.messageCount + " mensajes")}</div>
+      </div>
+    </div>
+    <div class="ticket-info">
+      ${chip}
+      <div class="pane-actions">${actions.join("")}</div>
+    </div>`;
+}
+
+async function selectConversation(phone) {
+  state.selectedPhone = phone;
+  document.getElementById("panePlaceholder").style.display = "none";
+  document.getElementById("paneContent").style.display = "flex";
+  const c = state.conversations.find(x => x.phone === phone);
+  renderPaneHeader(c || { phone, ticket: null });
+  renderConversations();
+  await renderChat();
+  if (state.chatTimer) clearInterval(state.chatTimer);
+  state.chatTimer = setInterval(() => { renderChat(); }, 5000);
+}
+
+async function sendReply() {
+  const input = document.getElementById("replyInput");
+  const text = input.value.trim();
+  if (!text || !state.selectedPhone) return;
+  input.disabled = true;
+  try {
+    await api("/conversations/" + state.selectedPhone + "/reply", "POST", { text });
+    input.value = "";
+    await renderChat();
+    renderConversations();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function action(fn) { return fn().then(async () => { await renderChat(); await refreshPaneHeader(); renderStats(); }).catch(e => alert(e.message)); }
+const doConfirm = id => action(() => api("/tickets/" + id + "/confirm", "POST", { note: "" }));
+const doCancel = id => action(() => api("/tickets/" + id + "/cancel", "POST", { note: "" }));
+const doClose = id => action(() => api("/tickets/" + id + "/close", "POST", { note: "" }));
+
+async function refreshPaneHeader() {
+  if (!state.selectedPhone) return;
+  try {
+    const list = await api("/conversations");
+    state.conversations = list;
+    const c = list.find(x => x.phone === state.selectedPhone);
+    if (c) renderPaneHeader(c);
+    renderConversations();
+  } catch (e) {}
+}
+
+async function createComplaint() {
+  const phone = document.getElementById("cPhone").value.trim();
+  const type = document.getElementById("cType").value;
+  const desc = document.getElementById("cDesc").value.trim();
+  const sol = document.getElementById("cSol").value.trim();
+  if (!phone || !desc) { alert("Indica el teléfono y la descripción del reclamo"); return; }
+  try {
+    await api("/complaints", "POST", { phone, type, description: desc, expectedSolution: sol || undefined });
+    document.getElementById("cPhone").value = "";
+    document.getElementById("cDesc").value = "";
+    document.getElementById("cSol").value = "";
+    toggleComplaintForm(false);
+    renderComplaints();
+  } catch (e) { alert(e.message); }
+}
+
+function toggleComplaintForm(show) {
+  document.getElementById("complaintForm").style.display = show ? "flex" : "none";
+  document.getElementById("newComplaintBtn").style.display = show ? "none" : "inline-block";
+  if (show) document.getElementById("cPhone").focus();
+}
+
+const ACTION_LABEL = { CONFIRM: "Confirmar", CANCEL: "Cancelar", CLOSE: "Cerrar", REPLY: "Responder", RESOLVE: "Resolver" };
+const TYPE_LABEL = { QUEJA: "Queja", RECLAMO: "Reclamo", SUGERENCIA: "Sugerencia" };
+
+function fmtDateTime(iso) {
+  return new Date(iso).toLocaleString("es", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+async function renderHistory() {
+  const box = document.getElementById("viewHistory");
+  try {
+    const records = await api("/validations");
+    if (!records.length) { box.innerHTML = '<div style="padding:30px;color:#9aa5b1;font-size:13px;text-align:center;">Sin acciones registradas.</div>'; return; }
+    box.innerHTML = `<table class="data"><thead><tr><th>Fecha</th><th>Teléfono</th><th>Acción</th><th>Nota</th><th>Ticket</th></tr></thead><tbody>` +
+      records.map(r => `<tr>
+        <td>${fmtDateTime(r.createdAt)}</td>
+        <td>${esc(r.phone)}</td>
+        <td><span class="badge ${r.action.toLowerCase()}">${ACTION_LABEL[r.action] || r.action}</span></td>
+        <td>${esc(r.note || "")}</td>
+        <td>${r.ticketId ? "#" + r.ticketId : ""}</td>
+      </tr>`).join("") + `</tbody></table>`;
+  } catch (e) { box.innerHTML = '<div style="padding:30px;color:#dc2626;font-size:13px;">' + esc(e.message) + '</div>'; }
+}
+
+async function renderComplaints() {
+  const box = document.getElementById("complaintsList");
+  try {
+    const complaints = await api("/complaints");
+    if (!complaints.length) { box.innerHTML = '<div style="padding:30px;color:#9aa5b1;font-size:13px;text-align:center;">No hay reclamos registrados.</div>'; return; }
+    box.innerHTML = `<table class="data"><thead><tr><th>ID</th><th>Fecha</th><th>Teléfono</th><th>Tipo</th><th>Descripción</th><th>Solución esperada</th><th>Estado</th><th>Nota de resolución</th><th>Acciones</th></tr></thead><tbody>` +
+      complaints.map(c => {
+        const acts = [];
+        if (c.status === "PENDING" || c.status === "OPEN") acts.push(`<button class="action-link" onclick="resolveComplaint(${c.id})">Resolver</button>`);
+        if (c.status !== "CLOSED") acts.push(`<button class="action-link danger" onclick="closeComplaint(${c.id})">Cerrar</button>`);
+        return `<tr>
+          <td>#${c.id}</td>
+          <td>${fmtDateTime(c.createdAt)}</td>
+          <td>${esc(c.phone)}</td>
+          <td><span class="badge open">${TYPE_LABEL[c.type] || c.type}</span></td>
+          <td>${esc(c.description)}</td>
+          <td>${esc(c.expectedSolution || "")}</td>
+          <td><span class="badge ${c.status.toLowerCase()}">${c.status}</span></td>
+          <td>${esc(c.resolutionNote || "")}</td>
+          <td>${acts.join("")}</td>
+        </tr>`;
+      }).join("") + `</tbody></table>`;
+  } catch (e) { box.innerHTML = '<div style="padding:30px;color:#dc2626;font-size:13px;">' + esc(e.message) + '</div>'; }
+}
+
+function promptNote(msg) {
+  const n = prompt(msg, "");
+  return n === null ? undefined : n.trim();
+}
+
+function resolveComplaint(id) {
+  const note = promptNote("Nota de resolución:");
+  if (note === undefined) return;
+  api("/complaints/" + id + "/resolve", "POST", { note }).then(renderComplaints).catch(e => alert(e.message));
+}
+
+function closeComplaint(id) {
+  const note = promptNote("Nota de cierre (opcional):");
+  if (note === undefined) return;
+  api("/complaints/" + id + "/close", "POST", { note }).then(renderComplaints).catch(e => alert(e.message));
+}
+
+function switchTab(tab) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  document.getElementById("viewConversations").style.display = tab === "conversations" ? "block" : "none";
+  document.getElementById("viewHistory").style.display = tab === "history" ? "block" : "none";
+  document.getElementById("viewComplaints").style.display = tab === "complaints" ? "block" : "none";
+  if (tab === "history") renderHistory();
+  if (tab === "complaints") renderComplaints();
+}
+
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+
+document.getElementById("loginBtn").onclick = async () => {
+  const u = document.getElementById("user").value, p = document.getElementById("pass").value;
+  const res = await fetch("/api/login", { method: "POST", headers: { Authorization: "Basic " + btoa(u + ":" + p) } });
+  if (!res.ok) { document.getElementById("loginErr").textContent = "Credenciales inválidas"; return; }
+  const data = await res.json();
+  state.token = data.token;
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("logout").style.display = "inline-block";
+  refresh();
+  if (state.conversations.length) selectConversation(state.conversations[0].phone);
+};
+
+document.getElementById("logout").onclick = () => location.reload();
+document.getElementById("sendBtn").onclick = sendReply;
+document.getElementById("replyInput").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }
+});
+document.getElementById("searchInput").addEventListener("input", renderConversations);
+document.getElementById("newComplaintBtn").onclick = () => toggleComplaintForm(true);
+document.getElementById("cSave").onclick = createComplaint;
+document.getElementById("cCancel").onclick = () => toggleComplaintForm(false);
+
+function refresh() {
+  renderStats();
+  renderConversations();
+  const activeTab = document.querySelector(".tab.active")?.dataset.tab;
+  if (activeTab === "history") renderHistory();
+  if (activeTab === "complaints") renderComplaints();
+}
+setInterval(() => { if (state.token) { refresh(); } }, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Circuit {
+  OFFICIAL
+  ALTERNATIVE
+}
+
+enum Activity {
+  PRACTICE
+  SIMULACRO
+  EXAM
+}
+
+enum ReservationStatus {
+  PENDING_PAYMENT
+  AWAITING_VOUCHER
+  PENDING_HUMAN
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum TicketStatus {
+  PENDING
+  OPEN
+  CLOSED
+}
+
+enum TicketReason {
+  NO_SOLUTION
+  PAYMENT
+  TRAMITE
+  CANCEL
+  REPROGRAM
+  NO_SHOW
+  RECATEGORIZATION
+  UPGRADE
+  OTHER
+}
+
+enum ConversationStatus {
+  BOT
+  HUMAN
+  CLOSED
+}
+
+model Category {
+  id          Int           @id @default(autoincrement())
+  code        String        @unique
+  vehicle     String
+  price       Decimal
+  durationMin Int           @default(30)
+  order       Int
+  reservations Reservation[]
+}
+
+model ScheduleRule {
+  id       Int      @id @default(autoincrement())
+  name     String
+  activity Activity
+  circuit  Circuit
+  days     String
+  start    String
+  end      String
+  order    Int
+}
+
+model Package {
+  id          Int           @id @default(autoincrement())
+  code        String        @unique
+  name        String
+  price       Decimal
+  items       Json
+  description String
+  reservations Reservation[]
+}
+
+model Client {
+  id        Int           @id @default(autoincrement())
+  name      String?
+  phone     String        @unique
+  createdAt DateTime      @default(now())
+  reservations Reservation[]
+}
+
+model Reservation {
+  id            Int               @id @default(autoincrement())
+  clientId      Int
+  client        Client            @relation(fields: [clientId], references: [id])
+  categoryId    Int
+  category      Category          @relation(fields: [categoryId], references: [id])
+  activity      Activity
+  circuit       Circuit
+  date          DateTime
+  startTime     String
+  endTime       String
+  durationMin   Int
+  price         Decimal
+  status        ReservationStatus @default(PENDING_PAYMENT)
+  paymentMethod String?
+  packageId     Int?
+  package       Package?          @relation(fields: [packageId], references: [id])
+  voucherPath   String?
+  reminder24h   Boolean           @default(false)
+  reminder2h    Boolean           @default(false)
+  ticketId      Int?              @unique
+  ticket        Ticket?           @relation("reservationTicket", fields: [ticketId], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model Ticket {
+  id            Int          @id @default(autoincrement())
+  phone         String
+  reason        TicketReason
+  status        TicketStatus @default(PENDING)
+  summary       String
+  context       Json
+  reservationId Int?             @unique
+  reservation   Reservation?     @relation("reservationTicket")
+  closedNote    String?
+  createdAt     DateTime     @default(now())
+  closedAt      DateTime?
+  complaintId   Int?              @unique
+  complaint     Complaint?        @relation("complaintTicket")
+}
+
+model Conversation {
+  id        Int                @id @default(autoincrement())
+  phone     String             @unique
+  status    ConversationStatus @default(BOT)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+enum ComplaintStatus {
+  PENDING
+  OPEN
+  RESOLVED
+  CLOSED
+}
+
+enum ComplaintType {
+  QUEJA
+  RECLAMO
+  SUGERENCIA
+}
+
+model Complaint {
+  id              Int             @id @default(autoincrement())
+  phone           String
+  clientName      String?
+  type            ComplaintType
+  description     String
+  expectedSolution String?
+  status          ComplaintStatus @default(PENDING)
+  resolutionNote  String?
+  ticketId        Int?            @unique
+  ticket          Ticket?         @relation("complaintTicket", fields: [ticketId], references: [id])
+  createdAt       DateTime        @default(now())
+  closedAt        DateTime?
+}
+
+enum ValidationAction {
+  CONFIRM
+  CANCEL
+  CLOSE
+  REPLY
+  RESOLVE
+}
+
+model ValidationRecord {
+  id            Int      @id @default(autoincrement())
+  phone         String
+  action        ValidationAction
+  note          String?
+  ticketId      Int?
+  reservationId Int?
+  operator      String   @default("operador")
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([phone])
+}
+
+model Message {
+  id        String   @id
+  phone     String
+  direction String
+  text      String?
+  mediaType String?
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+  @@index([createdAt])
+}

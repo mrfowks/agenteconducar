@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: conducar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: conducar
+      POSTGRES_PASSWORD: conducar
+      POSTGRES_DB: conducar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conducar -d conducar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  evolution-api:
+    image: atendaias/evolution-api:latest
+    container_name: conducar-evolution
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_ENABLED: "true"
+      DATABASE_CONNECTION_URI: postgresql://conducar:conducar@postgres:5432/conducar?schema=public
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_MESSAGE_CONTACT_UPDATE: "true"
+      DATABASE_SAVE_MESSAGE_CHAT_UPDATE: "true"
+      DATABASE_SAVE_MESSAGE_LABEL_UPDATE: "true"
+      DATABASE_SAVE_MESSAGE_HISTORIC: "false"
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      SERVER_URL: http://localhost:8080
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      WEBHOOK_GLOBAL_URL: ""
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution-instances:/evolution/instances
+
+  app:
+    build: .
+    container_name: conducar-agent
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://conducar:conducar@postgres:5432/conducar?schema=public
+      EVOLUTION_API_URL: http://evolution-api:8080
+      PORT: 3000
+      TZ: America/Lima
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  evolution-instances:

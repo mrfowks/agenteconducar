@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+*.log
+.DS_Store
+prisma/*.db
+# QR transitorio de conexión WhatsApp (se regenera por sesión)
+public/QRWhatsApp.jpeg
