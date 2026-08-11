@@ -1,4 +1,5 @@
 services:
+  # ===== Base de datos del agente Conducar =====
   postgres:
     image: postgres:16-alpine
     container_name: conducar-postgres
@@ -7,8 +8,6 @@ services:
       POSTGRES_USER: conducar
       POSTGRES_PASSWORD: conducar
       POSTGRES_DB: conducar
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,32 +16,7 @@ services:
       timeout: 5s
       retries: 5
 
-  evolution-api:
-    image: atendaias/evolution-api:latest
-    container_name: conducar-evolution
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_ENABLED: "true"
-      DATABASE_CONNECTION_URI: postgresql://conducar:conducar@postgres:5432/conducar?schema=public
-      DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
-      DATABASE_SAVE_MESSAGE_CONTACT_UPDATE: "true"
-      DATABASE_SAVE_MESSAGE_CHAT_UPDATE: "true"
-      DATABASE_SAVE_MESSAGE_LABEL_UPDATE: "true"
-      DATABASE_SAVE_MESSAGE_HISTORIC: "false"
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      SERVER_URL: http://localhost:8080
-      WEBHOOK_GLOBAL_ENABLED: "false"
-      WEBHOOK_GLOBAL_URL: ""
-    ports:
-      - "8080:8080"
-    volumes:
-      - evolution-instances:/evolution/instances
-
+  # ===== Agente Conducar (app + panel + webhook) =====
   app:
     build: .
     container_name: conducar-agent
@@ -59,7 +33,82 @@ services:
       TZ: America/Lima
     ports:
       - "3000:3000"
+    volumes:
+      - ./public:/app/public
+
+  # ===== Base de datos de Evolution API =====
+  evolution-db:
+    image: postgres:15
+    container_name: conducar-evolution-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution123
+    command:
+      - postgres
+      - -c
+      - max_connections=1000
+      - -c
+      - listen_addresses=*
+    volumes:
+      - evolution-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===== Redis de Evolution API =====
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: conducar-evolution-redis
+    restart: unless-stopped
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - evolution-redis:/data
+
+  # ===== Evolution API (pasarela WhatsApp) =====
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: conducar-evolution
+    restart: unless-stopped
+    depends_on:
+      evolution-db:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_started
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution123@evolution-db:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_exchange
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_SEND_MESSAGE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_REQUEST_TIMEOUT_MS: "60000"
+      WEBHOOK_RETRY_MAX_ATTEMPTS: "10"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - evolution-instances:/evolution/instances
 
 volumes:
   pgdata:
+  evolution-db:
+  evolution-redis:
   evolution-instances:
