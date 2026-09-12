@@ -4,7 +4,7 @@ import { getAgendaSummary, getAvailableSlots, getActivitiesForDate, formatSlots,
 import { generateStartTimes, nowTime } from "../domain/calendar";
 import { createReservation, formatMyReservations, listMyReservations, requestChange } from "../modules/booking/service";
 import { PAYMENT_METHODS_INFO } from "../modules/payments/service";
-import { sendImage } from "../modules/whatsapp/client";
+import { sendImage } from "../modules/chatwoot/delivery";
 import { logOutgoing } from "../modules/messages/service";
 import { prisma } from "../db/client";
 import { toLocalDateKey, weekdayName } from "../domain/calendar";

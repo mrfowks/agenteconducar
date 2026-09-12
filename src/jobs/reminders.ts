@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../db/client";
 import { env } from "../config/env";
-import { sendText } from "../modules/whatsapp/client";
+import { sendText } from "../modules/chatwoot/delivery";
 import { logOutgoing } from "../modules/messages/service";
 import { toLocalDateKey, weekdayName } from "../domain/calendar";
 
@@ -36,8 +36,7 @@ async function runReminders(): Promise<void> {
       const text =
         `⏰ Recordatorio: tu ${servicio} en Conducar es mañana ${weekdayName(new Date(r.date))} a las ${r.startTime} ` +
         `(categoría ${r.category.code}, ${circuit}). Llega con anticipación: la atención es por orden de llegada.`;
-      await sendText(r.client.phone, text);
-      await logOutgoing(r.client.phone, text);
+      await sendReminder(r.client.phone, text);
       await prisma.reservation.update({ where: { id: r.id }, data: { reminder24h: true } });
     }
 
@@ -45,9 +44,29 @@ async function runReminders(): Promise<void> {
       const text =
         `🚗 Te esperamos en Conducar en 2 horas: ${servicio} de ${r.startTime} a ${r.endTime} ` +
         `(categoría ${r.category.code}, ${circuit}). ¡Nos vemos pronto!`;
-      await sendText(r.client.phone, text);
-      await logOutgoing(r.client.phone, text);
+      await sendReminder(r.client.phone, text);
       await prisma.reservation.update({ where: { id: r.id }, data: { reminder2h: true } });
     }
+  }
+}
+
+/**
+ * Envía un recordatorio con log claro ante fallo.
+ * Nota: NO se implementan plantillas de Meta en esta fase; si Meta exige
+ * plantilla para el mensaje (fuera de la ventana de 24 h de sesión), el error
+ * se loguea como "pendiente de configuración de plantilla" sin romper el job.
+ */
+async function sendReminder(phone: string, text: string): Promise<void> {
+  try {
+    await sendText(phone, text);
+    await logOutgoing(phone, text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[jobs] recordatorio NO enviado a ${phone}. ` +
+        (/(template|400|403)/i.test(message)
+          ? "Puede requerir plantilla aprobada de Meta para mensajes fuera de sesión — pendiente de configuración de plantilla."
+          : message),
+    );
   }
 }

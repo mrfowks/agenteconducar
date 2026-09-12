@@ -8,6 +8,134 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Entero positivo estricto para ids de Chatwoot ("0", negativos, vacíos y no
+ * numéricos → null). */
+function parsePositiveInt(raw: string | undefined): number | null {
+  if (raw === undefined) return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return value > 0 ? value : null;
+}
+
+export interface ChatwootEnvConfig {
+  enabled: boolean;
+  baseUrl: string;
+  accountId: number;
+  inboxId: number;
+  apiToken: string;
+  webhookSecret: string;
+}
+
+export type ChatwootEnvValidation =
+  | { ok: true; config: ChatwootEnvConfig }
+  | { ok: false; errors: string[] };
+
+const DISABLED_CONFIG: ChatwootEnvConfig = {
+  enabled: false,
+  baseUrl: "",
+  accountId: 0,
+  inboxId: 0,
+  apiToken: "",
+  webhookSecret: "",
+};
+
+/**
+ * Validación PURA y fail-fast de la configuración de Chatwoot (testeable sin
+ * arrancar la app).
+ * - CHATWOOT_ENABLED=false o ausente → ok siempre, no exige NADA de Chatwoot
+ *   (rollback a Meta intacto).
+ * - CHATWOOT_ENABLED=true → CHATWOOT_BASE_URL (URL http/https válida),
+ *   CHATWOOT_ACCOUNT_ID y CHATWOOT_INBOX_ID (enteros > 0), CHATWOOT_API_TOKEN
+ *   y CHATWOOT_WEBHOOK_SECRET (no vacíos) son OBLIGATORIAS. Valores vacíos,
+ *   "0", negativos o no numéricos producen un error claro (nunca /accounts/0/).
+ */
+export function validateChatwootEnv(
+  vars: Record<string, string | undefined>,
+): ChatwootEnvValidation {
+  const enabled = vars.CHATWOOT_ENABLED === "true";
+  if (!enabled) return { ok: true, config: DISABLED_CONFIG };
+
+  const errors: string[] = [];
+
+  const baseUrl = vars.CHATWOOT_BASE_URL ?? "";
+  if (baseUrl === "") {
+    errors.push(
+      "Falta la variable de entorno CHATWOOT_BASE_URL (obligatoria cuando CHATWOOT_ENABLED=true)",
+    );
+  } else if (!isHttpUrl(baseUrl)) {
+    errors.push(`CHATWOOT_BASE_URL debe ser una URL http(s) válida (recibido: "${baseUrl}")`);
+  }
+
+  const accountId = parsePositiveInt(vars.CHATWOOT_ACCOUNT_ID);
+  if (accountId === null) {
+    errors.push(
+      `CHATWOOT_ACCOUNT_ID debe ser un número entero mayor que 0 (recibido: "${vars.CHATWOOT_ACCOUNT_ID ?? ""}")`,
+    );
+  }
+
+  const inboxId = parsePositiveInt(vars.CHATWOOT_INBOX_ID);
+  if (inboxId === null) {
+    errors.push(
+      `CHATWOOT_INBOX_ID debe ser un número entero mayor que 0 (recibido: "${vars.CHATWOOT_INBOX_ID ?? ""}")`,
+    );
+  }
+
+  if ((vars.CHATWOOT_API_TOKEN ?? "") === "") {
+    errors.push(
+      "Falta la variable de entorno CHATWOOT_API_TOKEN (obligatoria cuando CHATWOOT_ENABLED=true)",
+    );
+  }
+  if ((vars.CHATWOOT_WEBHOOK_SECRET ?? "") === "") {
+    errors.push(
+      "Falta la variable de entorno CHATWOOT_WEBHOOK_SECRET (obligatoria cuando CHATWOOT_ENABLED=true)",
+    );
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  return {
+    ok: true,
+    config: {
+      enabled: true,
+      baseUrl,
+      accountId: accountId as number,
+      inboxId: inboxId as number,
+      apiToken: vars.CHATWOOT_API_TOKEN as string,
+      webhookSecret: vars.CHATWOOT_WEBHOOK_SECRET as string,
+    },
+  };
+}
+
+const chatwootEnabled = process.env.CHATWOOT_ENABLED === "true";
+if (!chatwootEnabled && process.env.CHATWOOT_ENABLED === undefined) {
+  console.warn(
+    "[env] CHATWOOT_ENABLED no definido; se asume false → backend Meta actual (rollback).",
+  );
+}
+
+// Fail-fast de configuración ANTES de construir env: con CHATWOOT_ENABLED=true
+// una config inválida (account/inbox "0", vacíos, no numéricos, URLs rotas)
+// aborta el arranque con un error claro en lugar de generar /accounts/0/...
+const chatwootValidation = validateChatwootEnv(process.env);
+if (!chatwootValidation.ok) {
+  throw new Error(
+    `[env] Configuración de Chatwoot inválida (CHATWOOT_ENABLED=true):\n${chatwootValidation.errors
+      .map((e) => `  - ${e}`)
+      .join("\n")}`,
+  );
+}
+const chatwootConfig = chatwootValidation.config;
+
 export const env = {
   port: Number(process.env.PORT ?? 3000),
   nodeEnv: process.env.NODE_ENV ?? "development",
@@ -46,6 +174,21 @@ export const env = {
   },
 
   webhookPath: process.env.WEBHOOK_PATH ?? "/webhook/meta",
+
+  // Chatwoot (Fase 2). Con enabled=false el backend Meta actual sigue intacto.
+  // Con enabled=true los valores vienen ya validados (fail-fast) por validateChatwootEnv.
+  chatwoot: {
+    enabled: chatwootConfig.enabled,
+    baseUrl: chatwootConfig.baseUrl,
+    accountId: chatwootConfig.accountId,
+    inboxId: chatwootConfig.inboxId,
+    apiToken: chatwootConfig.apiToken,
+    webhookSecret: chatwootConfig.webhookSecret,
+    webhookPath: process.env.CHATWOOT_WEBHOOK_PATH ?? "/webhooks/chatwoot",
+    botSenderId: Number(process.env.CHATWOOT_BOT_SENDER_ID ?? "0") || undefined,
+    timeoutMs: Number(process.env.CHATWOOT_TIMEOUT_MS ?? 15000),
+    maxRetries: Number(process.env.CHATWOOT_MAX_RETRIES ?? 3),
+  },
 };
 
 export function isProduction(): boolean {

@@ -11,7 +11,7 @@ import {
   listTickets,
   replyToUser,
 } from "../modules/tickets/service";
-import { graphPost } from "../modules/whatsapp/client";
+import { sendImage as deliverySendImage } from "../modules/chatwoot/delivery";
 import { prisma } from "../db/client";
 
 export const panelRouter = Router();
@@ -150,7 +150,7 @@ panelRouter.post("/api/conversations/:phone/reply", requireAuth, async (req: Req
     return;
   }
   try {
-    const { sendText } = await import("../modules/whatsapp/client");
+    const { sendText } = await import("../modules/chatwoot/delivery");
     const { logOutgoing } = await import("../modules/messages/service");
     await sendText(req.params.phone, text);
     await logOutgoing(req.params.phone, text);
@@ -375,45 +375,14 @@ panelRouter.post("/api/upload-image", requireAuth, async (req: Request, res: Res
     }
     fs.writeFileSync(storagePath, file.buffer);
 
-    // Subir a Meta Graph API
-    const formData = new FormData();
-    formData.append("file", file.buffer, storageFilename);
-    formData.append("phone_number_id", env.meta.phoneNumberId);
-
-    const metaResponse = await fetch(
-      `https://graph.facebook.com/${env.meta.apiVersion}/${env.meta.phoneNumberId}/media`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    if (!metaResponse.ok) {
-      const metaError = await metaResponse.text();
-      console.error("[panel] Error de Meta API:", metaError);
-      res.status(500).json({ error: "Error al subir a Meta: " + metaError });
-      return;
-    }
-
-    const metaData = (await metaResponse.json()) as { id: string };
-    const metaMediaId = metaData.id;
-
-    // Enviar WhatsApp
-    const graphBody = {
-      messaging_product: "whatsapp",
-      to: phone,
-      type: "image",
-      image: { id: metaMediaId },
-    };
-
-    
-    await graphPost(`${env.meta.phoneNumberId}/messages`, graphBody);
+    // Enviar por la capa de entrega (Chatwoot si está habilitado; Meta si no).
+    await deliverySendImage(phone, file.buffer, caption);
 
     // Guardar log de salida
     const { logOutgoing } = await import("../modules/messages/service");
     await logOutgoing(phone, caption || originalname);
 
-    res.json({ ok: true, metaMediaId, storagePath });
+    res.json({ ok: true, storagePath });
   });
 });
 

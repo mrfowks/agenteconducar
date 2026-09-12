@@ -1,6 +1,6 @@
 import { TicketReason, TicketStatus, ValidationAction } from "@prisma/client";
 import { prisma } from "../../db/client";
-import { sendText } from "../whatsapp/client";
+import { sendText } from "../chatwoot/delivery";
 import { releaseBot } from "../handoff/service";
 
 async function record(action: ValidationAction, phone: string, opts: { note?: string; ticketId?: number; reservationId?: number } = {}) {

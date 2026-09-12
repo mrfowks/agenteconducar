@@ -134,11 +134,19 @@ model Ticket {
 }
 
 model Conversation {
-  id        Int                @id @default(autoincrement())
-  phone     String             @unique
-  status    ConversationStatus @default(BOT)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id                   Int                @id @default(autoincrement())
+  phone                String             @unique
+  status               ConversationStatus @default(BOT)
+  // Mapeo con Chatwoot (Fase 2): identificadores del lado de Chatwoot para
+  // resolver la conversación al enviar mensajes de salida sin pasar por el
+  // webhook entrante (recordatorios, panel, reservas, boletos).
+  chatwootConversationId Int?            @unique
+  chatwootContactId     Int?
+  chatwootInboxId       Int?
+  chatwootAccountId     Int?
+  chatwootSourceId      String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 }
 
 enum ComplaintStatus {

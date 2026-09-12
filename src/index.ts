@@ -3,7 +3,7 @@ import express from "express";
 import { env } from "./config/env";
 import { metaRouter } from "./webhooks/meta";
 import { panelRouter } from "./panel/api";
-import { chatwootHandler } from "./webhooks/chatwoot";
+import { chatwootRouter } from "./webhooks/chatwoot";
 import { startReminders } from "./jobs/reminders";
 import { prisma } from "./db/client";
 
@@ -27,7 +27,7 @@ async function bootstrap() {
 
   app.use(metaRouter);
   app.use(panelRouter);
-  app.post("/webhooks/chatwoot", chatwootHandler);
+  app.use(env.chatwoot.webhookPath, chatwootRouter);
 
   app.use("/panel", express.static(path.join(process.cwd(), "panel")));
   app.use("/", express.static(path.join(process.cwd(), "public")));
@@ -41,6 +41,7 @@ async function bootstrap() {
   app.listen(env.port, () => {
     console.log(`🚀 Agente Conducar escuchando en el puerto ${env.port}`);
     console.log(`   Webhook Meta: GET/POST ${env.webhookPath}`);
+    console.log(`   Webhook Chatwoot: POST ${env.chatwoot.webhookPath} (enabled=${env.chatwoot.enabled})`);
     console.log(`   Panel operador: http://localhost:${env.port}/panel/`);
   });
 }

@@ -5,7 +5,7 @@ import { toLocalDateKey, weekdayName } from "../../domain/calendar";
 import { formatCircuit, getAvailableSlots } from "../calendar/service";
 import { muteBot } from "../handoff/service";
 import { getContext, logOutgoing } from "../messages/service";
-import { sendImage, sendText } from "../whatsapp/client";
+import { sendImage, sendText } from "../chatwoot/delivery";
 import { createTicket } from "../tickets/service";
 
 export interface CreateReservationInput {

@@ -20,7 +20,7 @@ import { prisma } from "../db/client";
 // ──────────────────────────────────────────────
 type ErrorProvider = "OPENAI" | "PRISMA" | "META" | "UNKNOWN";
 
-function detectProvider(err: any): ErrorProvider {
+export function detectProvider(err: any): ErrorProvider {
   const name: string = err?.name ?? "";
   const message: string = err?.message ?? "";
   const code: string = String(err?.code ?? "");
@@ -31,20 +31,18 @@ function detectProvider(err: any): ErrorProvider {
   return "UNKNOWN";
 }
 
-function truncate(str: string | undefined, maxLen: number): string {
+export function truncate(str: string | undefined, maxLen: number): string {
   if (!str) return "";
   return str.length > maxLen ? str.slice(0, maxLen) + "…" : str;
 }
 
-function safeStack(err: any, maxLines = 3): string {
+export function safeStack(err: any, maxLines = 3): string {
   const stack: string = err?.stack ?? "";
   if (!stack) return "";
   return stack.split("\n").slice(0, maxLines).join(" | ");
 }
 
-export const metaRouter = Router();
-
-const WELCOME_MESSAGE = `¡Hola! 🚗 Bienvenido al Circuito de Manejo Conducar Ventanilla.
+export const WELCOME_MESSAGE = `¡Hola! 🚗 Bienvenido al Circuito de Manejo Conducar Ventanilla.
 
 ¿En qué te puedo ayudar hoy? Escribe una opción o dinos directamente qué consulta tienes:
 
@@ -57,6 +55,8 @@ const WELCOME_MESSAGE = `¡Hola! 🚗 Bienvenido al Circuito de Manejo Conducar 
 4️⃣ Horarios de atención
 
 5️⃣ Hablar con un asesor especializado`;
+
+export const metaRouter = Router();
 
 // ──────────────────────────────────────────────
 // GET  /webhook/meta  → verificación del webhook
