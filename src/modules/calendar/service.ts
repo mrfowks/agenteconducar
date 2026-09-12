@@ -101,6 +101,7 @@ export async function getAvailableSlots(
       circuit: circuit as Circuit,
       activity: activity as Activity,
       status: { notIn: ["CANCELLED", "COMPLETED"] },
+      date: date,
     },
   });
 
@@ -142,7 +143,12 @@ export async function getNextValidDates(
     candidate.setDate(candidate.getDate() + i);
     const rules = await getActiveRules(candidate, circuit);
     const has = rules.some((r) => r.activity === activity);
-    if (has) dates.push(candidate);
+    if (has) {
+      // Verificar que haya al menos 1 slot disponible
+      const durationMin = activity === "SIMULACRO" ? 20 : 30;
+      const slots = await getAvailableSlots(candidate, circuit, activity, durationMin);
+      if (slots.length > 0) dates.push(candidate);
+    }
   }
   return dates;
 }

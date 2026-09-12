@@ -20,11 +20,12 @@ export const env = {
 
   databaseUrl: required("DATABASE_URL"),
 
-  evolution: {
-    url: (process.env.EVOLUTION_API_URL ?? "http://localhost:8080").replace(/\/$/, ""),
-    apiKey: required("EVOLUTION_API_KEY"),
-    instanceToken: process.env.EVOLUTION_INSTANCE_TOKEN ?? "",
-    instance: process.env.EVOLUTION_INSTANCE ?? "conducar",
+  meta: {
+    accessToken: required("META_ACCESS_TOKEN"),
+    phoneNumberId: required("META_PHONE_NUMBER_ID"),
+    appSecret: required("META_APP_SECRET"),
+    verifyToken: process.env.META_VERIFY_TOKEN ?? "conducar-ia-2026",
+    apiVersion: process.env.META_API_VERSION ?? "v21.0",
   },
 
   admin: {
@@ -44,7 +45,7 @@ export const env = {
     capacityPerBlock: Number(process.env.CAPACITY_PER_BLOCK ?? 1),
   },
 
-  webhookPath: process.env.WEBHOOK_PATH ?? "/webhook/evolution",
+  webhookPath: process.env.WEBHOOK_PATH ?? "/webhook/meta",
 };
 
 export function isProduction(): boolean {

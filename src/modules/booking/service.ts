@@ -141,9 +141,19 @@ export async function sendPaymentInstructions(phone: string, reservation: any) {
   }
 }
 
+/**
+ * Maneja la recibpción del comprobante de pago (voucher) enviado por el usuario.
+ * Actualiza el estado de la reserva a AWAITING_VOUCHER y almacena la ruta persistente
+ * al archivo en el volume Docker `/data/uploads/`, en lugar de usar el media_id de Meta
+ * que expira. Esto asegura que la reserva quede asociada al archivo persistente.
+ *
+ * @param phone - Número de teléfono del cliente
+ * @param storagePath - Ruta al archivo persistente en el almacenamiento Docker
+ * @param webhookId - ID del webhook de Meta que disparó este evento
+ */
 export async function handleVoucherReceived(
   phone: string,
-  mediaUrl: string,
+  storagePath: string, // Ruta al archivo persistente (no media_id de Meta)
   webhookId: string,
 ) {
   const client = await prisma.client.findUnique({ where: { phone } });
@@ -176,7 +186,7 @@ export async function handleVoucherReceived(
 
   await prisma.reservation.update({
     where: { id: reservation.id },
-    data: { status: "AWAITING_VOUCHER", voucherPath: mediaUrl },
+    data: { status: "AWAITING_VOUCHER", voucherPath: storagePath },
   });
 
   const context = await getContext(phone);

@@ -4,6 +4,43 @@ import { prisma } from "../db/client";
 import { localDateTime, nowTime, toLocalDateKey, weekdayName } from "../domain/calendar";
 import { TOOL_DEFINITIONS, TOOL_EXECUTORS } from "./tools";
 
+// ── Anti-loop constant ──────────────────────────────────────────────────────
+const FALLBACK_MESSAGE = "Estoy presentando un problema técnico. Un asesor humano te atenderá en breve.";
+
+// ── Logging helpers ──────────────────────────────────────────────────────────
+
+function detectProvider(err: unknown): "OPENAI" | "PRISMA" | "META" | "UNKNOWN" {
+  if (err instanceof Error) {
+    const name = err.name ?? "";
+    const msg = err.message ?? "";
+    if (/OpenAI|APIError|RateLimitError|AuthenticationError/i.test(name)) return "OPENAI";
+    if (/Prisma|PrismaClient/i.test(name) || /^P\d/.test((err as any).code ?? "")) return "PRISMA";
+    if (/Meta API|graph\.facebook\.com/i.test(msg)) return "META";
+  }
+  return "UNKNOWN";
+}
+
+function truncate(str: unknown, max = 300): string {
+  const s = String(str ?? "");
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function logStepStart(messageId: string, step: string) {
+  console.log(`[agent-flow] STEP_START messageId=${messageId} step=${step}`);
+}
+
+function logStepSuccess(messageId: string, step: string, startMs: number) {
+  console.log(`[agent-flow] STEP_SUCCESS messageId=${messageId} step=${step} durationMs=${Date.now() - startMs}`);
+}
+
+function logStepError(messageId: string, step: string, startMs: number, err: unknown) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  console.log(
+    `[agent-flow] STEP_ERROR messageId=${messageId} step=${step} durationMs=${Date.now() - startMs} ` +
+    `errorName=${e.name} errorMessage=${truncate(e.message)} provider=${detectProvider(err)}`
+  );
+}
+
 const SYSTEM_PROMPT = `Eres el asistente virtual oficial de Conducar, un Centro de Evaluación que brinda prácticas de manejo y evaluaciones de licencia.
 
 REGLAS OBLIGATORIAS (nunca las rompas):
@@ -72,14 +109,29 @@ FECHA Y HORA ACTUALES (úsalas para interpretar días relativos; NUNCA inventes 
 - "Hoy", "mañana", "pasado mañana" y "el próximo <día>" debes resolverlos con estas fechas. Si no puedes saber la fecha exacta, pregunta al usuario.`;
 }
 
-export async function runAgent(phone: string, userText: string, isNewUser = false): Promise<string> {
+export async function runAgent(phone: string, userText: string, isNewUser = false, messageId?: string): Promise<string> {
+  // ── Correlation ID: use provided messageId or generate a fallback ──────────
+  const mid = messageId ?? `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const runStart = Date.now();
+  console.log(`[agent-flow] RUN_START messageId=${mid} phone=${phone} isNewUser=${isNewUser}`);
+
   const client = new OpenAI({ apiKey: env.openai.apiKey });
 
-  const history = await prisma.message.findMany({
-    where: { phone },
-    orderBy: { createdAt: "asc" },
-    take: 14,
-  });
+  // ── STEP 1: HISTORIAL ──────────────────────────────────────────────────────
+  logStepStart(mid, "HISTORIAL");
+  const histStart = Date.now();
+  let history: any[];
+  try {
+    history = await prisma.message.findMany({
+      where: { phone },
+      orderBy: { createdAt: "asc" },
+      take: 14,
+    });
+    logStepSuccess(mid, "HISTORIAL", histStart);
+  } catch (err) {
+    logStepError(mid, "HISTORIAL", histStart, err);
+    throw err; // re-throw to preserve existing behavior
+  }
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: buildSystemPrompt(isNewUser) },
@@ -87,19 +139,34 @@ export async function runAgent(phone: string, userText: string, isNewUser = fals
 
   for (const m of history) {
     if (!m.text) continue;
+    // Anti-loop: skip fallback messages from history to prevent OpenAI from reproducing them
+    if (m.text === FALLBACK_MESSAGE) continue;
     const role = m.direction === "IN" ? ("user" as const) : ("assistant" as const);
     messages.push({ role, content: m.text });
   }
   messages.push({ role: "user", content: userText });
 
   let reply = "";
+  let loopIteration = 0;
   for (let i = 0; i < 6; i++) {
-    const completion = await client.chat.completions.create({
-      model: env.openai.model,
-      temperature: env.openai.temperature,
-      messages,
-      tools: TOOL_DEFINITIONS as OpenAI.Chat.Completions.ChatCompletionTool[],
-    });
+    loopIteration++;
+
+    // ── STEP 2: OPENAI ─────────────────────────────────────────────────────
+    logStepStart(mid, `OPENAI_iter${loopIteration}`);
+    const openaiStart = Date.now();
+    let completion: OpenAI.Chat.Completions.ChatCompletion;
+    try {
+      completion = await client.chat.completions.create({
+        model: env.openai.model,
+        temperature: env.openai.temperature,
+        messages,
+        tools: TOOL_DEFINITIONS as OpenAI.Chat.Completions.ChatCompletionTool[],
+      });
+      logStepSuccess(mid, `OPENAI_iter${loopIteration}`, openaiStart);
+    } catch (err) {
+      logStepError(mid, `OPENAI_iter${loopIteration}`, openaiStart, err);
+      throw err;
+    }
 
     const message = completion.choices[0]?.message;
     if (!message) {
@@ -109,15 +176,21 @@ export async function runAgent(phone: string, userText: string, isNewUser = fals
 
     if (message.tool_calls && message.tool_calls.length > 0) {
       messages.push(message as OpenAI.Chat.Completions.ChatCompletionMessageParam);
+
+      // ── STEP 3: TOOL (per call) ────────────────────────────────────────
       for (const call of message.tool_calls) {
         const executor = TOOL_EXECUTORS[call.function.name];
         let result: unknown;
+        logStepStart(mid, `TOOL_${call.function.name}`);
+        const toolStart = Date.now();
         try {
           const args = call.function.arguments
             ? JSON.parse(call.function.arguments)
             : {};
           result = await executor(phone, args);
+          logStepSuccess(mid, `TOOL_${call.function.name}`, toolStart);
         } catch (err) {
+          logStepError(mid, `TOOL_${call.function.name}`, toolStart, err);
           result = {
             error: err instanceof Error ? err.message : "Error interno al ejecutar la herramienta.",
           };
@@ -131,8 +204,23 @@ export async function runAgent(phone: string, userText: string, isNewUser = fals
       continue;
     }
 
+    // ── STEP 4: RESPONSE ───────────────────────────────────────────────────
     reply = message.content?.trim() || "No tengo esa información registrada. Un asesor humano puede ayudarte.";
+
+    // Anti-loop: detect if OpenAI reproduced the fallback message as a normal response
+    if (reply === FALLBACK_MESSAGE) {
+      console.error(`[agent-flow] AGENT_FALLBACK_LOOP_DETECTED messageId=${mid} phone=${phone} replyLen=${reply.length}`);
+      reply = "Disculpa, estoy teniendo dificultades técnicas. Por favor, intenta de nuevo o escribe 'asesor' para hablar con una persona.";
+    }
+
     break;
+  }
+
+  const totalMs = Date.now() - runStart;
+  if (reply) {
+    console.log(`[agent-flow] RUN_SUCCESS messageId=${mid} durationMs=${totalMs} replyLen=${reply.length}`);
+  } else {
+    console.log(`[agent-flow] RUN_SUCCESS messageId=${mid} durationMs=${totalMs} replyLen=0 (fallback)`);
   }
 
   return reply || "No tengo esa información registrada. Un asesor humano puede ayudarte.";

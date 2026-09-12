@@ -108,7 +108,7 @@ model Reservation {
   paymentMethod String?
   packageId     Int?
   package       Package?          @relation(fields: [packageId], references: [id])
-  voucherPath   String?
+  voucherPath   String?  // Ruta al recurso persistente (archivo almacenado), NO media_id de Meta
   reminder24h   Boolean           @default(false)
   reminder2h    Boolean           @default(false)
   ticketId      Int?              @unique
@@ -195,8 +195,14 @@ model Message {
   id        String   @id
   phone     String
   direction String
-  text      String?
+  mediaId   String?    // Identificador interno de la aplicación
+  metaMediaId String?  // Identificador entregado por Meta/WhatsApp
+  mimeType  String?    // MIME real (ej. "image/jpeg")
+  fileSize  Int?       // Tamaño en bytes
+  storagePath String?  // Ubicación persistente donde está el archivo
+  caption   String?    // Texto que vino con la imagen/medio del usuario
   mediaType String?
+  source    String?  @default("AI")   // "AI" | "FALLBACK" | "HANDOFF" | etc.
   createdAt DateTime @default(now())
 
   @@index([phone])

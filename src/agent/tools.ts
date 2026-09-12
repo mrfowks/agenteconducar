@@ -1,6 +1,7 @@
 import { Activity, Circuit, ComplaintType, TicketReason } from "@prisma/client";
 import { env } from "../config/env";
-import { getAgendaSummary, getAvailableSlots, getActivitiesForDate, formatSlots, getNextValidDates } from "../modules/calendar/service";
+import { getAgendaSummary, getAvailableSlots, getActivitiesForDate, formatSlots, getNextValidDates, getActiveRules } from "../modules/calendar/service";
+import { generateStartTimes, nowTime } from "../domain/calendar";
 import { createReservation, formatMyReservations, listMyReservations, requestChange } from "../modules/booking/service";
 import { PAYMENT_METHODS_INFO } from "../modules/payments/service";
 import { sendImage } from "../modules/whatsapp/client";
@@ -264,7 +265,22 @@ export const TOOL_EXECUTORS: Record<string, ToolExecutor> = {
     }
     const slots = await getAvailableSlots(fecha, circuito, actividad, duracionMin);
     if (slots.length === 0) {
-      return { disponible: false, mensaje: `No hay horarios disponibles de ${actividad === "SIMULACRO" ? "simulacro" : "práctica"} en el circuito ${circuito === "OFFICIAL" ? "oficial" : "alternativo"} para el ${toLocalDateKey(fecha, env.business.timezone)}.` };
+      const rules = await getActiveRules(fecha, circuito);
+      const rule = rules.find((r) => r.activity === actividad);
+      let razon = "";
+      if (!rule) {
+        razon = `No se realizan ${actividad === "SIMULACRO" ? "simulacros" : "prácticas"} en el circuito ${circuito === "OFFICIAL" ? "oficial" : "alternativo"} ese día.`;
+      } else {
+        const allStarts = generateStartTimes(rule.start, rule.end, duracionMin);
+        const nowT = nowTime(env.business.timezone);
+        const isToday = toLocalDateKey(new Date(), env.business.timezone) === toLocalDateKey(fecha, env.business.timezone);
+        if (isToday && allStarts.every((s) => s <= nowT)) {
+          razon = "Todos los horarios de hoy ya pasaron.";
+        } else {
+          razon = "Todos los horarios están ocupados.";
+        }
+      }
+      return { disponible: false, mensaje: razon };
     }
     return {
       disponible: true,

@@ -107,7 +107,7 @@ export async function replyToUser(ticketId: number, text: string) {
   const ticket = await getTicket(ticketId);
   if (!ticket) throw new Error("Ticket no encontrado");
   await prisma.message.create({
-    data: { id: crypto.randomUUID(), phone: ticket.phone, direction: "OUT", text },
+    data: { id: crypto.randomUUID(), phone: ticket.phone, direction: "OUT", caption: text },
   });
   await record("REPLY", ticket.phone, { note: text.slice(0, 200), ticketId });
   await sendText(ticket.phone, text);

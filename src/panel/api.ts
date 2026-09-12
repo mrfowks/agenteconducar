@@ -1,6 +1,8 @@
-import { Router, Request, Response, NextFunction } from "express";
 import { ComplaintType } from "@prisma/client";
 import { env } from "../config/env";
+import multer from "multer";
+import crypto from "crypto";
+import { Router, Request, Response, NextFunction } from "express";
 import {
   cancelReservationFromTicket,
   closeTicket,
@@ -9,12 +11,13 @@ import {
   listTickets,
   replyToUser,
 } from "../modules/tickets/service";
+import { graphPost } from "../modules/whatsapp/client";
 import { prisma } from "../db/client";
 
 export const panelRouter = Router();
 
 function isAuthed(req: Request): boolean {
-  const header = req.headers.authorization ?? "";
+  const header = req.headers["authorization"] ?? "";
   if (header.startsWith("Bearer ")) {
     return header.slice(7) === env.admin.token;
   }
@@ -82,11 +85,11 @@ panelRouter.get("/api/conversations", requireAuth, async (_req: Request, res: Re
     take: 5000,
   });
 
-  const byPhone = new Map<string, { count: number; last?: { text: string | null; direction: string; createdAt: Date } }>();
+  const byPhone = new Map<string, { count: number; last?: { caption: string | null; direction: string; createdAt: Date; mediaType: string | null } }>();
   for (const m of messages) {
     const entry = byPhone.get(m.phone) ?? { count: 0 };
-    entry.count += 1;
-    entry.last = { text: m.text, direction: m.direction, createdAt: m.createdAt };
+entry.count += 1;
+      entry.last = { caption: m.caption, direction: m.direction, createdAt: m.createdAt, mediaType: m.mediaType };
     byPhone.set(m.phone, entry);
   }
 
@@ -111,7 +114,7 @@ panelRouter.get("/api/conversations", requireAuth, async (_req: Request, res: Re
         phone,
         name: clientName.get(phone) || null,
         messageCount: data.count,
-        last: data.last ? { text: data.last.text, direction: data.last.direction, createdAt: data.last.createdAt } : null,
+        last: data.last ? { text: data.last.caption, direction: data.last.direction, createdAt: data.last.createdAt, mediaType: data.last.mediaType } : null,
         ticket: ticketByPhone.get(phone)
           ? {
               id: ticketByPhone.get(phone)!.id,
@@ -254,6 +257,166 @@ panelRouter.post("/api/complaints/:id/resolve", requireAuth, async (req: Request
     data: { action: "RESOLVE", phone: complaint.phone, note: req.body?.note ?? null, ticketId: complaint.ticketId ?? undefined },
   });
   res.json({ ok: true, complaint });
+});
+
+/**
+ * Endpoint para servir archivos locales guardados en /data/uploads/ usando el mediaId interno de la aplicación.
+ * El panel usa esto para recuperar imágenes, audio y documentos asociados a los mensajes.
+ *
+ * Flujo:
+ * 1. Validar autenticación (requireAuth)
+ * 2. Buscar en la BD Message por mediaId (ID interno, no de Meta)
+ * 3. Si no existe el mensaje, retornar 404
+ * 4. Determinar la extensión desde el mimeType almacenado
+ * 5. Leer el archivo de /data/uploads/<mediaId>.ext
+ * 6. Si no existe el archivo, retornar 404 (sin fallback a Meta)
+ * 7. Devolver el archivo con Content-Type y Cache-Control adecuados
+ */
+panelRouter.get("/api/media/:mediaId", requireAuth, async (req: Request, res: Response) => {
+  try {
+    // 2. Buscar en la BD Message por mediaId (ID interno generado por la app, no el de Meta)
+    const message = await prisma.message.findFirst({
+      where: { mediaId: req.params.mediaId },
+    });
+
+    if (!message) {
+      res.status(404).json({ error: "Mensaje no encontrado" });
+      return;
+    }
+
+    // 5. Determinar la extensión desde el mimeType almacenado en la BD
+    const mimeType = message.mimeType ?? "application/octet-stream";
+    const extMap: Record<string, string> = {
+      "image/jpeg": ".jpg",
+      "image/png": ".png",
+      "image/webp": ".webp",
+      "audio/ogg": ".ogg",
+      "audio/mpeg": ".mp3",
+      "audio/wav": ".wav",
+      "application/pdf": ".pdf",
+      "video/mp4": ".mp4",
+    };
+    const ext = extMap[mimeType] ?? ".bin";
+
+    // 4. Leer el archivo de /data/uploads/<mediaId>.ext usando fs nativo
+    const filePath = `/data/uploads/${req.params.mediaId}${ext}`;
+    const fs = require("fs");
+
+    // Verificar que el archivo existe
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Archivo local no encontrado" });
+      return;
+    }
+
+    // Leer el archivo binario
+    const buffer = fs.readFileSync(filePath);
+
+    // 6. Devolver el archivo con los encabezados apropiados
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "public, max-age=86400"); // 24 horas
+    res.setHeader("Content-Disposition", `inline; filename="media${ext}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error("[panel] Error sirviendo media:", err);
+    res.status(500).json({ error: "Error interno al servir el archivo" });
+  }
+});
+ 
+panelRouter.post("/api/upload-image", requireAuth, async (req: Request, res: Response) => {
+  const phone = String(req.body?.phone ?? "").trim();
+  const caption = String(req.body?.caption ?? "").trim();
+
+  if (!phone) {
+    res.status(400).json({ error: "Falta el teléfono" });
+    return;
+  }
+
+  // Configurar multer para recibir un solo archivo en memoria
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB máximo
+  });
+
+  upload.single("image")(req as any, res as any, async (err: any) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ error: "El archivo excede el límite de 5MB" });
+        return;
+      }
+      if (err.code === "LIMIT_UNEXPECTED_FILE") {
+        res.status(400).json({ error: "Campo de archivo inesperado" });
+        return;
+      }
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
+    // Validar MIME type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    const file = (req as any).file;
+    if (!file || !allowedTypes.includes(file.mimetype)) {
+      res.status(400).json({ error: "Tipo MIME no permitido, solo JPEG, PNG, WebP" });
+      return;
+    }
+
+    const originalname = file.originalname;
+    // Generar nombre seguro
+    const path = require("path");
+    const storageFilename = `${Date.now()}_${crypto.randomUUID()}${path.extname(originalname)}`;
+    const storagePath = `/data/uploads/${storageFilename}`;
+
+    // Guardar archivo en /data/uploads/
+    const fs = require("fs");
+    const directory = path.dirname(storagePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+    fs.writeFileSync(storagePath, file.buffer);
+
+    // Subir a Meta Graph API
+    const formData = new FormData();
+    formData.append("file", file.buffer, storageFilename);
+    formData.append("phone_number_id", env.meta.phoneNumberId);
+
+    const metaResponse = await fetch(
+      `https://graph.facebook.com/v17.0/${env.meta.phoneNumberId}/media`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    if (!metaResponse.ok) {
+      const metaError = await metaResponse.text();
+      console.error("[panel] Error de Meta API:", metaError);
+      res.status(500).json({ error: "Error al subir a Meta: " + metaError });
+      return;
+    }
+
+    const metaData = (await metaResponse.json()) as { id: string };
+    const metaMediaId = metaData.id;
+
+    // Enviar WhatsApp
+    const graphBody = {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "image",
+      image: { id: metaMediaId },
+    };
+
+    
+    await graphPost(`${env.meta.phoneNumberId}/messages`, graphBody);
+
+    // Guardar log de salida
+    const { logOutgoing } = await import("../modules/messages/service");
+    await logOutgoing(phone, caption || originalname);
+
+    res.json({ ok: true, metaMediaId, storagePath });
+  });
 });
 
 panelRouter.post("/api/complaints/:id/close", requireAuth, async (req: Request, res: Response) => {
