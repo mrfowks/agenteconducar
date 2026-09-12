@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { env } from "../config/env";
 import { isBotActive } from "../modules/handoff/service";
 import {
@@ -201,20 +202,33 @@ async function processMessage(
     );
 
     // Guardar Message con nuevos campos en la BD
-    await prisma.message.create({
-      data: {
-        id: messageId, // Use the WhatsApp message ID as the Prisma ID
-        phone,
-        mediaId: mediaIdInterno,
-        metaMediaId,
-        mimeType,
-        fileSize,
-        storagePath,
-        caption: msg.image.caption ?? undefined,
-        mediaType: "image",
-        direction: "IN",
-      },
-    });
+    try {
+      await prisma.message.create({
+        data: {
+          id: messageId, // Use the WhatsApp message ID as the Prisma ID
+          phone,
+          mediaId: mediaIdInterno,
+          metaMediaId,
+          mimeType,
+          fileSize,
+          storagePath,
+          caption: msg.image.caption ?? undefined,
+          mediaType: "image",
+          direction: "IN",
+        },
+      });
+    } catch (err) {
+      // Meta reintenta el mismo webhook ante timeouts/errores de red; si el mensaje ya fue
+      // insertado con este id, la violación de unicidad no debe convertirse en un 500 ni
+      // reprocesar el mensaje. Cualquier otro error sí se relanza.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        console.log(
+          `[meta-flow] MEDIA_IN_DUPLICATE messageId=${messageId} phone=${phone} — webhook reintentado por Meta, mensaje ya procesado; se omite.`,
+        );
+        return;
+      }
+      throw err;
+    }
     console.log(
       `[meta-flow] MEDIA_IN_DB_SUCCESS messageId=${messageId} phone=${phone}`,
     );

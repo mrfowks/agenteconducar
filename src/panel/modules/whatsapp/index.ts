@@ -1,3 +1,5 @@
+import { env } from "../../../config/env";
+
 export async function sendText(phone: string, text: string): Promise<void> {
   const formData = new FormData();
   formData.append("messaging_product", "whatsapp");
@@ -7,7 +9,7 @@ export async function sendText(phone: string, text: string): Promise<void> {
   formData.append("text", { body: text });
 
   const response = await fetch(
-    `https://graph.facebook.com/v17.0/${process.env.META_PHONE_NUMBER_ID}/messages`,
+    `https://graph.facebook.com/${env.meta.apiVersion}/${process.env.META_PHONE_NUMBER_ID}/messages`,
     {
       method: "POST",
       headers: {
@@ -45,7 +47,7 @@ export async function graphPost(path: string, body: any): Promise<void> {
     formData.append("caption", body.caption);
   }
 
-  const url = `https://graph.facebook.com/v17.0/${process.env.META_PHONE_NUMBER_ID}${path}`;
+  const url = `https://graph.facebook.com/${env.meta.apiVersion}/${process.env.META_PHONE_NUMBER_ID}${path}`;
   
   const response = await fetch(url, {
     method: "POST",

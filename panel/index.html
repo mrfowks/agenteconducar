@@ -1031,7 +1031,7 @@ function fmtTime(iso) {
 }
 
 function lastPreview(c) {
-  const t = c.last?.text;
+  const t = c.last?.caption;
   if (!t) return c.last?.mediaType === "image" ? "📷 Imagen" : "Sin mensajes";
   if (c.last?.mediaType === "image") return (c.last.direction === "OUT" ? "Tú: " : "") + "📷 Imagen";
   return (c.last.direction === "OUT" ? "Tú: " : "") + t;
@@ -1147,14 +1147,14 @@ function bubbleHtml(m) {
   // Doble check azul para mensajes salientes
   const check = m.direction === "OUT" ? '<span class="check">✓✓</span>' : "";
   
-  if (m.mediaType === "image" && m.text) {
+  if (m.mediaType === "image" && m.mediaId) {
     return `<div class="bubble ${cls} bubble-img">
-      <img src="/api/media/${esc(m.text)}" alt="imagen" loading="lazy" onclick="openLightbox(this.src)" />
+      <img src="/api/media/${esc(m.mediaId)}" alt="imagen" loading="lazy" onclick="openLightbox(this.src)" />
       <span class="time">${time} ${check}</span>
     </div>`;
   }
   
-  const text = m.text || (m.mediaType ? `[${m.mediaType}]` : "");
+  const text = m.caption || (m.mediaType ? `[${m.mediaType}]` : "");
   return `<div class="bubble ${cls}">${esc(text)}<span class="time">${time} ${check}</span></div>`;
 }
 
@@ -1497,11 +1497,11 @@ function handleFileSelected(input, mediaType) {
   
   // Subir archivo
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("image", file);
   formData.append("phone", state.selectedPhone);
   formData.append("mediaType", mediaType);
   
-  fetch("/api/media/upload", {
+  fetch("/api/upload-image", {
     method: "POST",
     headers: { "Authorization": "Bearer " + state.token },
     body: formData

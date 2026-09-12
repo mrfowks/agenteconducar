@@ -114,7 +114,7 @@ entry.count += 1;
         phone,
         name: clientName.get(phone) || null,
         messageCount: data.count,
-        last: data.last ? { text: data.last.caption, direction: data.last.direction, createdAt: data.last.createdAt, mediaType: data.last.mediaType } : null,
+        last: data.last ? { caption: data.last.caption, direction: data.last.direction, createdAt: data.last.createdAt, mediaType: data.last.mediaType } : null,
         ticket: ticketByPhone.get(phone)
           ? {
               id: ticketByPhone.get(phone)!.id,
@@ -267,8 +267,9 @@ panelRouter.post("/api/complaints/:id/resolve", requireAuth, async (req: Request
  * 1. Validar autenticación (requireAuth)
  * 2. Buscar en la BD Message por mediaId (ID interno, no de Meta)
  * 3. Si no existe el mensaje, retornar 404
- * 4. Determinar la extensión desde el mimeType almacenado
- * 5. Leer el archivo de /data/uploads/<mediaId>.ext
+ * 4. Si el mensaje no tiene storagePath (mensaje antiguo sin archivo persistido), retornar 404 informativo
+ * 5. Leer el archivo desde Message.storagePath (los archivos se guardan como <timestamp>_<uuid>.ext,
+ *    ver downloadAndSaveMedia en src/modules/whatsapp/client.ts)
  * 6. Si no existe el archivo, retornar 404 (sin fallback a Meta)
  * 7. Devolver el archivo con Content-Type y Cache-Control adecuados
  */
@@ -284,22 +285,19 @@ panelRouter.get("/api/media/:mediaId", requireAuth, async (req: Request, res: Re
       return;
     }
 
-    // 5. Determinar la extensión desde el mimeType almacenado en la BD
-    const mimeType = message.mimeType ?? "application/octet-stream";
-    const extMap: Record<string, string> = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/webp": ".webp",
-      "audio/ogg": ".ogg",
-      "audio/mpeg": ".mp3",
-      "audio/wav": ".wav",
-      "application/pdf": ".pdf",
-      "video/mp4": ".mp4",
-    };
-    const ext = extMap[mimeType] ?? ".bin";
+    // 4. Usar Message.storagePath: el mediaId interno (p. ej. img_<ts>_<rand>) NO coincide con el
+    // nombre del archivo (<timestamp>_<uuid>.ext), por lo que reconstruir la ruta a partir del
+    // mediaId no es viable. Los mensajes antiguos sin storagePath no tienen archivo localizable.
+    if (!message.storagePath) {
+      res.status(404).json({ error: "Mensaje sin archivo almacenado (storagePath no registrado)" });
+      return;
+    }
 
-    // 4. Leer el archivo de /data/uploads/<mediaId>.ext usando fs nativo
-    const filePath = `/data/uploads/${req.params.mediaId}${ext}`;
+    // 5. Determinar el mimeType almacenado en la BD para el Content-Type
+    const mimeType = message.mimeType ?? "application/octet-stream";
+
+    // 5b. Leer el archivo desde storagePath usando fs nativo
+    const filePath = message.storagePath;
     const fs = require("fs");
 
     // Verificar que el archivo existe
@@ -314,7 +312,7 @@ panelRouter.get("/api/media/:mediaId", requireAuth, async (req: Request, res: Re
     // 6. Devolver el archivo con los encabezados apropiados
     res.setHeader("Content-Type", mimeType);
     res.setHeader("Cache-Control", "public, max-age=86400"); // 24 horas
-    res.setHeader("Content-Disposition", `inline; filename="media${ext}"`);
+    res.setHeader("Content-Disposition", `inline; filename="${require("path").basename(filePath)}"`);
     res.send(buffer);
   } catch (err) {
     console.error("[panel] Error sirviendo media:", err);
@@ -383,7 +381,7 @@ panelRouter.post("/api/upload-image", requireAuth, async (req: Request, res: Res
     formData.append("phone_number_id", env.meta.phoneNumberId);
 
     const metaResponse = await fetch(
-      `https://graph.facebook.com/v17.0/${env.meta.phoneNumberId}/media`,
+      `https://graph.facebook.com/${env.meta.apiVersion}/${env.meta.phoneNumberId}/media`,
       {
         method: "POST",
         body: formData,
