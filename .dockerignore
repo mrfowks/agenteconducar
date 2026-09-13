@@ -1,3 +1,19 @@
+# =============================================================================
+# .dockerignore — contexto de build para Docker
+#
+# Decisiones (documentadas):
+#   - test/, .github/ y documentación NO viajan al daemon: el runtime no los
+#     necesita; `npm test` corre fuera del contenedor.
+#   - .env y .env.* NO viajan: los secretos se inyectan con env_file en compose.
+#     Esto excluye TAMBIÉN .env.example (no es necesario para build/runtime;
+#     vive en el repo y se copia manualmente al VPS con `cp .env.example .env`).
+#   - dist/ y node_modules: se reconstruyen dentro del Dockerfile (npm ci/tsc);
+#     NUNCA se copian los node_modules/dist del host.
+#   - prisma/, src/, panel/, public/, package*.json, tsconfig.json y Dockerfile
+#     quedan EXPLÍCITAMENTE FUERA de esta lista (son necesarios para el build).
+# =============================================================================
+
+# Siempre excluir
 node_modules
 dist
 .git
@@ -5,7 +21,14 @@ dist
 .env.*
 *.log
 npm-debug.log*
+build_errors.txt
 .DS_Store
+
+# Documentación y AGENTS (no necesarias en la imagen)
 README.md
 DEPLOY.md
-public/QRWhatsApp.jpeg
+AGENTS.md
+
+# Tests y CI (runtime no los necesita; test corre en el host)
+test
+.github

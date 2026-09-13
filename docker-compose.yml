@@ -1,41 +1,122 @@
+# =============================================================================
+# docker-compose.yml — Conducar Agent (compose de producción/local)
+#
+# FASE 3 - Docker/GHCR.
+#   - app     → imagen construida local (conducar-app:local). Se publica SOLO en
+#               127.0.0.1 (loopback; NUNCA 0.0.0.0). El acceso público se hace a
+#               futuro con el workflow GHCR + reverse proxy en el VPS.
+#   - postgres→ SOLO red interna (conducar-net): sin puertos publicados.
+#
+# Red FUTURA en VPS (compatibilidad):
+#   Cuando exista la red externa del VPS (p.ej. "core-net" creada con
+#   `docker network create core-net`), bastará con declarar en cada servicio:
+#       networks: [core-net, conducar-net]   (o externalizar conducar-net)
+#   NO se hace en esta fase: esta fase NO depende del VPS (2.25.131.203 no se
+#   toca) — solo queda documentada la compatibilidad.
+#
+# .env REAL: gitignored, debe existir junto a este archivo.
+#   cp .env.example .env   → completar valores. El compose sobreescribe SOLO las
+#   variables internas que él controla (DATABASE_URL por servicio, PORT, TZ).
+#   Las credenciales de postgres (POSTGRES_*) NO tienen defaults: son
+#   OBLIGATORIAS en .env (${VAR:?} → fail-fast) y producen un error claro si
+#   faltan (ver sección (D) de .env.example).
+# =============================================================================
+
 services:
-  # ===== Base de datos del agente Conducar =====
+  # ── Base de datos PostgreSQL (solo red interna) ───────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: conducar-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: conducar
-      POSTGRES_PASSWORD: conducar
-      POSTGRES_DB: conducar
+      # FAIL-FAST: sin valores por defecto. Deben estar en el .env real
+      # (cp .env.example .env y completar; ver sección (D) del ejemplo).
+      # POSTGRES_PASSWORD debe ser URL-safe (alfanumérico) porque se inyecta en
+      # la DATABASE_URL de la app. NO usar valores de ejemplo en producción.
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER no definido: defínelo en .env (ver .env.example)}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD no definido: defínelo en .env (ver .env.example)}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB no definido: defínelo en .env (ver .env.example)}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U conducar -d conducar"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - conducar-net
+    # IMPORTANTE: NINGÚN "ports:" → la BD no se expone fuera de conducar-net.
 
-  # ===== Agente Conducar (app + panel + webhook) =====
+  # ── Agente Conducar (app + panel + webhooks + agente IA) ──────────────────
   app:
     build: .
+    # Nombre LOCAL de la imagen (sin secretos ni registro remoto fijo). La
+    # publicación en GHCR la hace el workflow .github/workflows/docker-image.yml.
+    image: conducar-app:local
     container_name: conducar-agent
     restart: unless-stopped
+    # Techo de gracia ante SIGTERM. Con el CMD `... && exec node ...` Node es
+    # PID 1 y muere de inmediato al recibir SIGTERM (no hay handler propio), así
+    # que hoy no añade latencia; deja margen si en el futuro se añade un
+    # shutdown graceful (cerrar Prisma/HTTP) sin que Docker lo mate con SIGKILL.
+    stop_grace_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://conducar:conducar@postgres:5432/conducar?schema=public
+      # URL interna por NOMBRE DE SERVICIO (postgres), no localhost. Gana sobre
+      # DATABASE_URL del env_file. FAIL-FAST: mismas variables POSTGRES_* que el
+      # servicio postgres (sin defaults), garantizando coherencia usuario/BD.
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER no definido: defínelo en .env (ver .env.example)}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD no definido: defínelo en .env (ver .env.example)}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB no definido: defínelo en .env (ver .env.example)}?schema=public"
       PORT: 3000
-      TZ: America/Lima
+      TZ: ${TIMEZONE:-America/Lima}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      # Bind LOOPBACK (nunca 0.0.0.0). Host: ${APP_PORT:-3001}; contenedor: 3000.
+      - "127.0.0.1:${APP_PORT:-3001}:3000"
     volumes:
-      - ./public:/app/public
-      - uploads:/data/uploads
+      # Persistencia de media (vouchers, adjuntos) en /data/uploads.
+      - uploads-data:/data/uploads
+    healthcheck:
+      # node:20-slim NO trae curl/wget → healthcheck con fetch de Node.
+      # GET /health existe en src/index.ts (200 JSON {status:"ok"}).
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - conducar-net
 
 volumes:
   pgdata:
-  uploads:
+  uploads-data:
+
+networks:
+  conducar-net:
+    driver: bridge

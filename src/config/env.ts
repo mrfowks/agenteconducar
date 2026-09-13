@@ -8,6 +8,52 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+/** Producción detectada SIN depender del objeto `env` (aún no construido). */
+const isProd = (process.env.NODE_ENV ?? "development") === "production";
+
+/**
+ * Valores por defecto/débiles NUNCA aceptables como secretos en producción.
+ * Comparación en minúsculas y sin espacios. NUNCA se imprime el valor.
+ */
+const WEAK_SECRETS = new Set([
+  "cambia-este-token",
+  "cambia-esta-password",
+  "cambia-por-un-token-largo-aleatorio",
+  "cambia-por-una-password-larga-aleatoria",
+  "conducar2026",
+  "conducar-ia-2026",
+  "changeme",
+  "change-me",
+  "admin",
+  "password",
+  "secret",
+  "token",
+]);
+
+/**
+ * Secreto obligatorio en producción (fail-fast) con default SOLO-dev.
+ * - Producción: debe existir, no estar vacío y no ser un valor débil conocido.
+ *   Si no, aborta el arranque con un error claro. NUNCA imprime el valor.
+ * - Development: se permite el default de desarrollo (arranque local fácil).
+ */
+function productionSecret(name: string, devFallback: string): string {
+  const value = process.env[name];
+  if (isProd) {
+    if (value === undefined || value.trim() === "") {
+      throw new Error(
+        `[env] ${name} es obligatoria en producción (NODE_ENV=production) y no puede estar vacía. Defínela en el entorno; por seguridad no se imprime su valor.`,
+      );
+    }
+    if (WEAK_SECRETS.has(value.trim().toLowerCase())) {
+      throw new Error(
+        `[env] ${name} usa un valor por defecto/débil, inaceptable en producción (NODE_ENV=production). Define un valor largo y aleatorio; por seguridad no se imprime su valor.`,
+      );
+    }
+    return value;
+  }
+  return value ?? devFallback;
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
@@ -136,6 +182,21 @@ if (!chatwootValidation.ok) {
 }
 const chatwootConfig = chatwootValidation.config;
 
+// META_VERIFY_TOKEN: se conserva el default de desarrollo porque Meta/WhatsApp
+// NO está activo aún (rollback intacto). En producción, si falta o es un valor
+// débil se emite una ADVERTENCIA (NO bloqueante) para no romper el arranque
+// mientras Meta siga desactivado. Endurecerlo es requisito ANTES de activar Meta.
+const metaVerifyTokenRaw = process.env.META_VERIFY_TOKEN;
+if (
+  isProd &&
+  (metaVerifyTokenRaw === undefined ||
+    WEAK_SECRETS.has((metaVerifyTokenRaw ?? "").trim().toLowerCase()))
+) {
+  console.warn(
+    "[env] META_VERIFY_TOKEN no definido o débil en producción (Meta NO activo: no bloqueante). Defínelo antes de activar Meta.",
+  );
+}
+
 export const env = {
   port: Number(process.env.PORT ?? 3000),
   nodeEnv: process.env.NODE_ENV ?? "development",
@@ -157,9 +218,11 @@ export const env = {
   },
 
   admin: {
-    token: required("ADMIN_TOKEN", "cambia-este-token"),
+    // En producción ADMIN_TOKEN y PANEL_PASSWORD son OBLIGATORIOS y fuertes
+    // (fail-fast en el arranque); en development se admiten los defaults.
+    token: productionSecret("ADMIN_TOKEN", "cambia-este-token"),
     username: process.env.PANEL_USERNAME ?? "admin",
-    password: process.env.PANEL_PASSWORD ?? "conducar2026",
+    password: productionSecret("PANEL_PASSWORD", "conducar2026"),
   },
 
   qrImageUrl: process.env.QR_IMAGE_URL ?? "",

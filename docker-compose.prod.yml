@@ -1,0 +1,123 @@
+# =============================================================================
+# docker-compose.prod.yml — Conducar Agent (producción / VPS)
+#
+# DIFERENCIAS CON docker-compose.yml (que sigue siendo el LOCAL):
+#   - SIN `build:`: el VPS NO construye. Hace `pull` de la imagen publicada en
+#     GHCR: `ghcr.io/mrfowks/agenteconducar:${IMAGE_TAG:-latest}` (workflow
+#     .github/workflows/docker-image.yml). `pull_policy: always` garantiza
+#     re-pull en cada `docker compose pull` / `up`.
+#   - Red red: `conducar-prod-net` (privada del agente) + `core-net` (EXTERNAL;
+#     debe estar creada antes en el VPS con:
+#     `docker network create core-net`). La app pertenece a ambas para poder
+#     hablar (a futuro) con otros servicios del VPS (p.ej. Chatwoot) vía
+#     core-net, manteniendo PostgreSQL en su red propia sin exposición pública.
+#   - nginx (host del VPS) expone SOLO 80/443; la app se publica en loopback
+#     127.0.0.1:${APP_PORT:-3001}:3000 y PostgreSQL NO publica puertos.
+#   - Fail-fast asegurado: ${VAR:?} obliga POSTGRES_* en el .env REAL del VPS
+#     y `NODE_ENV: production` es forzado (el fail-fast de ADMIN_TOKEN y
+#     PANEL_PASSWORD se activa aunque el .env no lo declare).
+#   - Recursos acotados para VPS de 1 vCPU / ~3.8 GB RAM (app y postgres
+#     limitados a 768M/1.0 CPU cada uno).
+#
+# USO EN EL VPS:
+#   cp .env.example .env        (y completar con secretos FUERTES reales)
+#   docker network create core-net   (solo la primera vez)
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml pull   (re-pull de la imagen)
+#   IMAGE_TAG=sha-abc1234 docker compose -f docker-compose.prod.yml up -d
+# =============================================================================
+
+services:
+  # ── Base de datos PostgreSQL (solo red privada del agente) ────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      # FAIL-FAST: credenciales SIEMPRE desde el .env del VPS (nunca defaults).
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER no definido: defínelo en .env (ver .env.example)}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD no definido: defínelo en .env (ver .env.example)}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB no definido: defínelo en .env (ver .env.example)}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      # SÓLO su red privada. Ningún puerto publicado (privacidad total).
+      - conducar-prod-net
+
+  # ── Agente Conducar (app + panel + webhooks + agente IA) ──────────────────
+  app:
+    image: ghcr.io/mrfowks/agenteconducar:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    # Re-pull SIEMPRE: el VPS no construye; la imagen viene de GHCR.
+    pull_policy: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      # El .env REAL del VPS (secrets: OpenAI/Meta/Chatwoot/panel/Postgres).
+      - .env
+    environment:
+      # Forzado en producción: activa el fail-fast de ADMIN_TOKEN/PANEL_PASSWORD
+      # y los logs en modo producción aunque falte la línea en .env.
+      NODE_ENV: production
+      # URL interna por nombre de servicio. Gana sobre DATABASE_URL del env_file.
+      # FAIL-FAST: mismas POSTGRES_* que el servicio postgres (sin defaults).
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER no definido en .env}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD no definido en .env}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB no definido en .env}?schema=public"
+      PORT: 3000
+      TZ: ${TIMEZONE:-America/Lima}
+    ports:
+      # SOLO loopback (127.0.0.1): el tráfico público entra por nginx (80/443)
+      # y llega aquí con proxy_pass. NUNCA 0.0.0.0.
+      - "127.0.0.1:${APP_PORT:-3001}:3000"
+    volumes:
+      # Persistencia de media (vouchers, adjuntos) en /data/uploads.
+      - uploads-data:/data/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - conducar-prod-net
+      - core-net
+
+volumes:
+  pgdata:
+  uploads-data:
+
+networks:
+  conducar-prod-net:
+  # Red EXTERNAL compartida del VPS (debe existir antes):
+  #   docker network create core-net
+  core-net:
+    external: true
