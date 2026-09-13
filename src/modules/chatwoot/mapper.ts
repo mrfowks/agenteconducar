@@ -128,15 +128,69 @@ export function extractPhoneFromPayload(payload: ChatwootMessagePayload): string
   return null;
 }
 
+/** Identidad del contacto en Chatwoot, independiente del teléfono. */
+export interface ContactIdentity {
+  contactId: number | null;
+  conversationId: number | null;
+  sourceId: string | null;
+  phone: string | null;
+}
+
+/**
+ * Resuelve la identidad del contacto en Chatwoot de forma independiente al teléfono.
+ * Un contacto válido puede existir sin teléfono (ej. BSUID, contactos sin wa_id).
+ */
+export function resolveContactIdentity(payload: ChatwootMessagePayload): ContactIdentity {
+  return {
+    contactId:
+      payload.conversation?.contact_inbox?.contact_id ??
+      payload.contact_inbox?.contact_id ??
+      null,
+    conversationId: payload.conversation?.id ?? null,
+    sourceId:
+      payload.conversation?.contact_inbox?.source_id ??
+      payload.contact_inbox?.source_id ??
+      payload.source_id ??
+      null,
+    phone: extractPhoneFromPayload(payload),
+  };
+}
+
+/**
+ * ¿El payload tiene evidencia fuerte de que el emisor es un Contacto válido de Chatwoot?
+ * NO requiere teléfono: un contacto puede existir sin wa_id (BSUID, contactos sin número).
+ *
+ * Evidencia fuerte (cualquiera de estas):
+ * 1. contact_inbox.contact_id existe (Contact creado en Chatwoot)
+ * 2. sender.phone_number existe (teléfono disponible)
+ * 3. source_id parece teléfono (wa_id numérico)
+ * 4. sender.id es un número positivo (Contact ID válido)
+ */
+export function hasContactEvidence(payload: ChatwootMessagePayload): boolean {
+  // 1. contact_inbox con contact_id = evidencia fuerte
+  if (payload.conversation?.contact_inbox?.contact_id) return true;
+  if (payload.contact_inbox?.contact_id) return true;
+  // 2. sender.phone_number = evidencia de teléfono
+  if (payload.sender?.phone_number) return true;
+  // 3. source_id que parece teléfono
+  const sourceId =
+    payload.conversation?.contact_inbox?.source_id ?? payload.contact_inbox?.source_id;
+  if (sourceId && looksLikePhone(sourceId)) return true;
+  // 4. sender.id como Contact ID válido (payload real: SENDER_ID_OBJECT=9)
+  if (typeof payload.sender?.id === "number" && payload.sender.id > 0) return true;
+  return false;
+}
+
 /** Extrae TODA la información relevante de un payload message_created. */
 export function extractFromPayload(payload: ChatwootMessagePayload): ExtractedPayload {
+  const identity = resolveContactIdentity(payload);
   return {
-    phone: extractPhoneFromPayload(payload),
-    chatwootConversationId: payload.conversation?.id ?? null,
-    chatwootContactId: payload.conversation?.contact_inbox?.contact_id ?? null,
+    phone: identity.phone,
+    chatwootConversationId: identity.conversationId,
+    chatwootContactId: identity.contactId,
     chatwootInboxId: payload.conversation?.inbox_id ?? payload.inbox?.id ?? null,
     chatwootAccountId: payload.account?.id ?? null,
-    sourceId: payload.conversation?.contact_inbox?.source_id ?? payload.source_id ?? null,
+    sourceId: identity.sourceId,
     senderName: payload.sender?.name ?? null,
     messageText: payload.content ?? "",
     messageId: payload.id ?? null,

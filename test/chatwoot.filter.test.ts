@@ -163,8 +163,8 @@ test("E3. sender.type null + source_id válido → procesa", () => {
 test("E4. sender.type undefined sin evidencia de contacto → rechaza", () => {
   const res = messageFilter(
     validPayload({
-      sender: { id: 123 },
-      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "bsuid-abc-123" } },
+      sender: {},
+      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, inbox_id: 9, source_id: "bsuid-abc-123" } },
     }),
     OPTIONS,
   );
@@ -174,8 +174,8 @@ test("E4. sender.type undefined sin evidencia de contacto → rechaza", () => {
 test("E5. sender.type null sin evidencia de contacto → rechaza", () => {
   const res = messageFilter(
     validPayload({
-      sender: { id: 123, type: null },
-      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, contact_id: 42, inbox_id: 9 } },
+      sender: { type: null },
+      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, inbox_id: 9 } },
     }),
     OPTIONS,
   );
@@ -238,6 +238,79 @@ test("E9. sender.type undefined + sender.phone_number → procesa", () => {
     validPayload({
       sender: { id: 123, phone_number: "51917595954" },
       conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, contact_id: 42, inbox_id: 9 } },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
+
+// ── Contactos sin teléfono (evidencia real de producción) ──────────────────
+
+test("E10. sender.type undefined + sender.id válido (Contact sin teléfono) → procesa", () => {
+  // Reproduce el caso real: SENDER_OBJECT_TYPE=contact, SENDER_ID_OBJECT=9,
+  // SENDER_PHONE=None, MESSAGE_CONTACT_INBOX=vacío
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 9 },
+      conversation: { id: 9, inbox_id: 9 },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
+
+test("E11. sender.type null + sender.id válido → procesa", () => {
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 9, type: null },
+      conversation: { id: 9, inbox_id: 9 },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
+
+test("E12. sender.type undefined + contact_inbox.contact_id → procesa", () => {
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 9 },
+      conversation: {
+        id: 9,
+        inbox_id: 9,
+        contact_inbox: { contact_id: 42, inbox_id: 9 },
+      },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
+
+test("E13. sender.type undefined + source_id BSUID → NO procesa (sin evidencia)", () => {
+  // BSUID no parece teléfono y no hay contact_id ni sender.id
+  const res = messageFilter(
+    validPayload({
+      sender: {},
+      conversation: {
+        id: 9,
+        inbox_id: 9,
+        contact_inbox: { source_id: "bsuid-abc-123", inbox_id: 9 },
+      },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "emisor_no_contacto" });
+});
+
+test("E14. sender.type undefined + source_id BSUID + sender.id → procesa", () => {
+  // BSUID + sender.id válido = evidencia fuerte
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 9 },
+      conversation: {
+        id: 9,
+        inbox_id: 9,
+        contact_inbox: { source_id: "bsuid-abc-123", inbox_id: 9 },
+      },
     }),
     OPTIONS,
   );

@@ -6,7 +6,9 @@ import {
   buildStoragePath,
   extractFromPayload,
   extractPhoneFromPayload,
+  hasContactEvidence,
   mimeToExtension,
+  resolveContactIdentity,
 } from "../src/modules/chatwoot/mapper";
 import { dataUrlToBuffer } from "../src/modules/chatwoot/processor";
 import { sniffMimeType } from "../src/modules/chatwoot/delivery";
@@ -201,4 +203,61 @@ test("L14. normalizePhone con variantes +51", () => {
 
   const payload4 = { conversation: { contact_inbox: { source_id: "+51917595954" } } };
   assert.equal(extractPhoneFromPayload(payload4), "51917595954");
+});
+
+// ── ContactIdentity: separación identidad vs teléfono ─────────────────────
+
+test("L15. resolveContactIdentity con payload completo", () => {
+  const identity = resolveContactIdentity({
+    sender: { id: 9, phone_number: "+51917595954" },
+    conversation: {
+      id: 55,
+      inbox_id: 9,
+      contact_inbox: { contact_id: 42, source_id: "51917595954" },
+    },
+    account: { id: 1 },
+  } as any);
+  assert.equal(identity.contactId, 42);
+  assert.equal(identity.conversationId, 55);
+  assert.equal(identity.sourceId, "51917595954");
+  assert.equal(identity.phone, "51917595954");
+});
+
+test("L16. resolveContactIdentity sin teléfono (caso 925930764)", () => {
+  const identity = resolveContactIdentity({
+    sender: { id: 9 },
+    conversation: { id: 9, inbox_id: 9 },
+    account: { id: 1 },
+  } as any);
+  assert.equal(identity.contactId, null); // no contact_inbox
+  assert.equal(identity.conversationId, 9);
+  assert.equal(identity.sourceId, null);
+  assert.equal(identity.phone, null);
+});
+
+test("L17. hasContactEvidence con sender.id válido", () => {
+  assert.equal(hasContactEvidence({ sender: { id: 9 } } as any), true);
+});
+
+test("L18. hasContactEvidence sin evidencia", () => {
+  assert.equal(hasContactEvidence({ sender: {} } as any), false);
+});
+
+test("L19. hasContactEvidence con contact_inbox.contact_id", () => {
+  assert.equal(
+    hasContactEvidence({
+      conversation: { contact_inbox: { contact_id: 42 } },
+    } as any),
+    true,
+  );
+});
+
+test("L20. hasContactEvidence con BSUID sin sender.id", () => {
+  assert.equal(
+    hasContactEvidence({
+      sender: {},
+      conversation: { contact_inbox: { source_id: "bsuid-abc" } },
+    } as any),
+    false,
+  );
 });

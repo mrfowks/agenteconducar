@@ -169,15 +169,16 @@ export function resolveStoredMimeType(dlMimeType: string, buffer: Buffer): strin
  */
 export async function processIncomingMessage(payload: ChatwootMessagePayload): Promise<void> {
   const extracted = extractFromPayload(payload);
-  const phone = extracted.phone;
 
-  if (!phone) {
-    console.warn(
-      "[chatwoot-proc] no se pudo resolver teléfono (source_id no E.164 y sin sender.phone_number). " +
-        "Mapeo por inbox_id+source_id pendiente — REQUIERE FASE POSTERIOR (transición BSUID).",
+  // El teléfono es OPCIONAL. Un contacto válido puede no tener teléfono
+  // (ej. BSUID, contactos sin wa_id). Usar source_id o conversationId como fallback.
+  const phone = extracted.phone ?? extracted.sourceId ?? `cw-${extracted.chatwootConversationId ?? extracted.messageId}`;
+
+  if (!extracted.phone) {
+    console.log(
+      `[chatwoot-proc] contacto sin teléfono (source_id no E.164); usando identidad fallback: ${phone}`,
       { messageId: extracted.messageId, inboxId: extracted.chatwootInboxId, sourceId: extracted.sourceId },
     );
-    return;
   }
 
   const dedupId = buildMessageId(extracted.chatwootAccountId, extracted.messageId);

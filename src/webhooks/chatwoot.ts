@@ -5,6 +5,7 @@ import {
   buildMessageId,
   ChatwootMessagePayload,
   extractPhoneFromPayload,
+  hasContactEvidence,
   isHumanUserSender,
 } from "../modules/chatwoot/mapper";
 import { processIncomingMessage } from "../modules/chatwoot/processor";
@@ -61,11 +62,12 @@ export function messageFilter(
     return { process: false, reason: "emisor_bot_no_humano" };
   }
   if (sender.type !== "contact") {
-    // Tolerar sender.type ausente/null si hay evidencia válida de contacto
-    // (source_id numérico o phone_number). Esto cubre payloads reales de
-    // Chatwoot v4.17.1 donde sender.type puede no estar presente.
+    // Tolerar sender.type ausente/null si hay evidencia fuerte de contacto.
+    // Payload real de Chatwoot v4.17.1: SENDER_OBJECT_TYPE="contact",
+    // SENDER_ID_OBJECT=9, SENDER_PHONE=None, MESSAGE_CONTACT_INBOX=vacío.
+    // La ausencia de teléfono NO significa que no sea Contact.
     if (sender.type === undefined || sender.type === null) {
-      if (!extractPhoneFromPayload(payload)) {
+      if (!hasContactEvidence(payload)) {
         return { process: false, reason: "emisor_no_contacto" };
       }
     } else {
@@ -398,14 +400,19 @@ chatwootRouter.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  // 5. Teléfono resoluble; si no, 200 sin reprocesar (mapeo BSUID pendiente).
-  const phone = extractPhoneFromPayload(payload);
+  // 5. Teléfono resoluble; si no hay teléfono, usar source_id o conversationId
+  // como identidad fallback (contacto válido sin wa_id: BSUID, etc.).
+  let phone = extractPhoneFromPayload(payload);
   if (!phone) {
-    console.warn(
-      `[chatwoot-webhook] mensaje sin teléfono resoluble messageId=${payload.id}; 200 sin reprocesar (REQUIERE FASE POSTERIOR: mapeo por inbox_id+source_id para BSUID)`,
+    const sourceId =
+      payload.conversation?.contact_inbox?.source_id ??
+      payload.contact_inbox?.source_id ??
+      payload.source_id ??
+      null;
+    phone = sourceId ?? `cw-${payload.conversation?.id ?? payload.id ?? "unknown"}`;
+    console.log(
+      `[chatwoot-webhook] contacto sin teléfono; usando identidad fallback: ${phone} (messageId=${payload.id})`,
     );
-    res.status(200).json({ ok: true, ignored: "sin_telefono" });
-    return;
   }
 
   // 6. Dedup persistente ANTES del 200.
