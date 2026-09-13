@@ -218,7 +218,7 @@ export async function requestChange(phone: string, reason: TicketReason, summary
   await muteBot(phone);
 
   const text =
-    "Entendido. Un asesor humano te atenderá por este mismo canal para resolver tu solicitud. En breve te contactamos.";
+    "Entendido. Te voy a transferir con un asesor especializado para ayudarte con este caso. En breve te contactamos.";
   await sendText(phone, text);
   await logOutgoing(phone, text);
 }

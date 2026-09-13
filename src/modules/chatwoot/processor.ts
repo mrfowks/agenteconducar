@@ -29,7 +29,7 @@ import * as delivery from "./delivery";
 import { WELCOME_MESSAGE, detectProvider, safeStack, truncate } from "../../webhooks/meta";
 
 const FALLBACK_MESSAGE =
-  "Estoy presentando un problema técnico. Un asesor humano te atenderá en breve.";
+  "Te voy a transferir con un asesor especializado para ayudarte con este caso.";
 
 type Stage = "RUN_AGENT" | "SEND_TEXT" | "LOG_OUTGOING" | "UNKNOWN";
 

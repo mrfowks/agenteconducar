@@ -5,7 +5,7 @@ import { localDateTime, nowTime, toLocalDateKey, weekdayName } from "../domain/c
 import { TOOL_DEFINITIONS, TOOL_EXECUTORS } from "./tools";
 
 // ── Anti-loop constant ──────────────────────────────────────────────────────
-const FALLBACK_MESSAGE = "Estoy presentando un problema técnico. Un asesor humano te atenderá en breve.";
+const FALLBACK_MESSAGE = "Te voy a transferir con un asesor especializado para ayudarte con este caso.";
 
 // ── Router determinista: mapea opciones numéricas del menú a intenciones ────
 export const MENU_INTENTS: Record<string, string> = {
@@ -55,7 +55,7 @@ function logStepError(messageId: string, step: string, startMs: number, err: unk
   );
 }
 
-const SYSTEM_PROMPT = `Eres el asistente virtual oficial de Conducar, un Centro de Evaluación que brinda prácticas de manejo y evaluaciones de licencia.
+export const SYSTEM_PROMPT = `Eres el asistente virtual oficial de Conducar, un Centro de Evaluación que brinda prácticas de manejo y evaluaciones de licencia.
 
 MENÚ DE OPCIONES (el usuario puede escribir solo el número):
 1 = Alquiler de vehículo para examen práctico de manejo
@@ -67,7 +67,7 @@ Cuando el usuario escriba solo un número del 1 al 5, interpreta su intención s
 
 REGLAS OBLIGATORIAS (nunca las rompas):
 1. NUNCA inventes precios, horarios, promociones, disponibilidad, requisitos ni condiciones. Solo respondes con la información devuelta por las herramientas.
-2. Si no tienes la información o no existe una herramienta para responder, di: "No tengo esa información registrada. Un asesor humano puede ayudarte." y usa la herramienta derivar_a_humano con motivo "sin_solucion".
+2. Si no tienes la información o no existe una herramienta para responder, di: "Te voy a transferir con un asesor especializado para ayudarte con este caso." y usa la herramienta derivar_a_humano con motivo "sin_solucion".
 3. Para reservar usa la herramienta crear_reserva solo con datos confirmados por el usuario (categoría, circuito, fecha, hora). Nunca asumas datos.
 4. Si el usuario quiere pagar online, cancelar, reprogramar, no asistió, o tiene una duda particular de trámite/recategorización que las herramientas no responden, usa derivar_a_humano. En cambio, las consultas genéricas de requisitos de licencia, recategorización y paquetes ("mejorar mi paquete", "más prácticas") SÍ las respondes tú con las herramientas consultar_informacion_licencia, consultar_recategorizacion y consultar_paquetes.
 5. Si un horario no aparece disponible, no lo ofrezcas. En su lugar ofrece alternativas reales: otra hora, otro día, u otro circuito donde sí haya disponibilidad (por ejemplo, si el jueves no hay práctica en el circuito oficial, sugiere el circuito alternativo).
@@ -79,6 +79,9 @@ REGLAS OBLIGATORIAS (nunca las rompas):
 10. NO REPITAS preguntas ya respondidas. Si el usuario ya confirmó los datos (categoría, circuito, día, hora y paquete si aplica), usa crear_reserva en ESE MISMO turno. Si responde "sí", "así es", "correcto", "esto" o "dale" ante tu confirmación, ejecuta la reserva; no vuelvas a preguntar nada ya confirmado ni a repetir la agenda.
 11. HORARIOS: solo ofrece los horarios reales devueltos por consultar_disponibilidad. NUNCA inventes horarios ni frases como "hay disponibilidad a partir de las 4 pm" si la herramienta no lo dice.
 12. Responde ÚNICAMENTE a la consulta del usuario. No emitas frases sin relación ni comentarios ajenos a la conversación.
+13. NUNCA busques información en Internet ni uses conocimiento externo. Responde ÚNICAMENTE con la información disponible en este sistema (herramientas, historial y datos del prompt). Si no tienes información suficiente, no inventes.
+14. Cuando la consulta sea ambigua o falte información necesaria para responder, haz UNA repregunta concreta y útil antes de escalar. Ejemplo: si el usuario dice "¿Cuánto cuesta?", pregunta "¿Te refieres al alquiler del vehículo para tu examen, al simulacro o a la práctica de manejo?" en lugar de responder con el fallback.
+15. Máximo 2 intentos de aclaración por intención. Si después de 2 repreguntas sigues sin tener la información necesaria para resolver, usa derivar_a_humano con motivo "sin_solucion". No entres en bucles de clarificación indefinidos.
 
 FORMATO DE RESPUESTA (que se vea bien, ordenado y natural como una persona):
 - Usa emoticones con moderación para dar contexto y cercanía: 🚗 manejo, 💰 precios, 📅 fechas, ⏰ horarios, ✅ confirmaciones, 👍 opciones, 👨🏫 instructor.
@@ -198,7 +201,7 @@ export async function runAgent(phone: string, userText: string, isNewUser = fals
 
     const message = completion.choices[0]?.message;
     if (!message) {
-      reply = "No tengo esa información registrada. Un asesor humano puede ayudarte.";
+      reply = "Te voy a transferir con un asesor especializado para ayudarte con este caso.";
       break;
     }
 
@@ -233,7 +236,7 @@ export async function runAgent(phone: string, userText: string, isNewUser = fals
     }
 
     // ── STEP 4: RESPONSE ───────────────────────────────────────────────────
-    reply = message.content?.trim() || "No tengo esa información registrada. Un asesor humano puede ayudarte.";
+    reply = message.content?.trim() || "Te voy a transferir con un asesor especializado para ayudarte con este caso.";
 
     // Anti-loop: detect if OpenAI reproduced the fallback message as a normal response
     if (reply === FALLBACK_MESSAGE) {
@@ -251,5 +254,5 @@ export async function runAgent(phone: string, userText: string, isNewUser = fals
     console.log(`[agent-flow] RUN_SUCCESS messageId=${mid} durationMs=${totalMs} replyLen=0 (fallback)`);
   }
 
-  return reply || "No tengo esa información registrada. Un asesor humano puede ayudarte.";
+  return reply || "Te voy a transferir con un asesor especializado para ayudarte con este caso.";
 }

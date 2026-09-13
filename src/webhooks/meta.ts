@@ -466,7 +466,7 @@ console.log(`[meta-flow] MEDIA_IN_END messageId=${messageId} phone=${phone}`);
     );
 
     const fallback =
-      "Estoy presentando un problema técnico. Un asesor humano te atenderá en breve.";
+      "Te voy a transferir con un asesor especializado para ayudarte con este caso.";
     try {
       await sendText(phone, fallback);
       await logOutgoing(phone, fallback, "FALLBACK");

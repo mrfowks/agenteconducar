@@ -77,14 +77,76 @@ test("H3. 'quiero hablar con una persona' → handoff NO_SOLUTION", () => {
 });
 
 test("H4. 'necesito un asesor' → handoff NO_SOLUTION", () => {
-  // Nota: el regex actual busca "hablar con un asesor", NO "necesito un asesor".
-  // Si el resultado es null, documentamos que "necesito un asesor" NO es trigger.
-  const result = detectEscalationTrigger("necesito un asesor");
-  // El regex actual NO captura "necesito un asesor" — solo "hablar con un asesor".
-  // Esto es comportamiento esperado; el asistente IA lo manejará.
-  assert.equal(result, null);
+  assert.equal(detectEscalationTrigger("necesito un asesor"), "NO_SOLUTION");
 });
 
 test("H5. 'hablar con un asesor' → handoff NO_SOLUTION", () => {
   assert.equal(detectEscalationTrigger("hablar con un asesor"), "NO_SOLUTION");
+});
+
+// ── SYSTEM_PROMPT: reglas de política ──────────────────────────────────────
+
+import { SYSTEM_PROMPT } from "../src/agent/agent";
+
+test("P1. SYSTEM_PROMPT prohíbe investigar en Internet", () => {
+  assert.match(SYSTEM_PROMPT, /NUNCA busques información en Internet/i);
+  assert.match(SYSTEM_PROMPT, /conocimiento externo/i);
+});
+
+test("P2. SYSTEM_PROMPT contiene regla de repregunta", () => {
+  assert.match(SYSTEM_PROMPT, /repregunta concreta/i);
+  assert.match(SYSTEM_PROMPT, /antes de escalar/i);
+});
+
+test("P3. SYSTEM_PROMPT contiene límite de 2 aclaraciones", () => {
+  assert.match(SYSTEM_PROMPT, /máximo 2 intentos de aclaración/i);
+  assert.match(SYSTEM_PROMPT, /derivar_a_humano/i);
+});
+
+test("P4. SYSTEM_PROMPT usa 'asesor especializado' en fallback", () => {
+  assert.match(SYSTEM_PROMPT, /asesor especializado/i);
+  assert.doesNotMatch(SYSTEM_PROMPT, /asesor humano puede ayudarte/i);
+});
+
+test("P5. FALLBACK_MESSAGE usa 'asesor especializado'", () => {
+  // FALLBACK_MESSAGE no está exportado, pero verificamos a través del prompt
+  assert.match(SYSTEM_PROMPT, /Te voy a transferir con un asesor especializado/i);
+});
+
+// ── Handoff: frases adicionales ────────────────────────────────────────────
+
+test("H6. 'quiero un asesor' → handoff", () => {
+  assert.equal(detectEscalationTrigger("quiero un asesor"), "NO_SOLUTION");
+});
+
+test("H7. 'necesito un asesor' → handoff", () => {
+  assert.equal(detectEscalationTrigger("necesito un asesor"), "NO_SOLUTION");
+});
+
+test("H8. 'necesito hablar con un asesor' → handoff", () => {
+  assert.equal(detectEscalationTrigger("necesito hablar con un asesor"), "NO_SOLUTION");
+});
+
+test("H9. 'necesito una persona' → handoff", () => {
+  assert.equal(detectEscalationTrigger("necesito una persona"), "NO_SOLUTION");
+});
+
+test("H10. 'pásame con una persona' → handoff", () => {
+  assert.equal(detectEscalationTrigger("pásame con una persona"), "NO_SOLUTION");
+});
+
+test("H11. 'pásame con alguien' → handoff", () => {
+  assert.equal(detectEscalationTrigger("pásame con alguien"), "NO_SOLUTION");
+});
+
+test("H12. 'asesoría' sola → NO handoff", () => {
+  assert.equal(detectEscalationTrigger("asesoría"), null);
+});
+
+test("H13. 'ayuda' sola → NO handoff", () => {
+  assert.equal(detectEscalationTrigger("ayuda"), null);
+});
+
+test("H14. 'informe' solo → NO handoff", () => {
+  assert.equal(detectEscalationTrigger("informe"), null);
 });
