@@ -2,6 +2,7 @@ import { Activity, Circuit, ScheduleRule } from "@prisma/client";
 import { prisma } from "../../db/client";
 import { env } from "../../config/env";
 import {
+  formatCustomerTime,
   generateStartTimes,
   isDayAllowed,
   minutesToTime,
@@ -59,7 +60,7 @@ export async function getActivitiesForDate(date: Date): Promise<string> {
   const lines = rules.map((r) => {
     const duration = r.activity === "SIMULACRO" ? 20 : r.activity === "PRACTICE" ? 30 : null;
     const dur = duration ? ` (${duration} min)` : "";
-    return `• ${r.name}${dur}: ${r.start}–${r.end} en ${formatCircuit(r.circuit)}.`;
+    return `• ${r.name}${dur}: ${formatCustomerTime(r.start)}–${formatCustomerTime(r.end)} en ${formatCircuit(r.circuit)}.`;
   });
   return `El ${weekdayName(date)} se atiende:\n${lines.join("\n")}`;
 }
@@ -72,7 +73,7 @@ export async function getAgendaSummary(): Promise<string> {
       .split(",")
       .map((d) => WEEKDAY_NAMES[Number(d)])
       .join(", ");
-    return `• ${r.name}: ${days} de ${r.start} a ${r.end} (${formatCircuit(r.circuit)}).`;
+    return `• ${r.name}: ${days} de ${formatCustomerTime(r.start)} a ${formatCustomerTime(r.end)} (${formatCircuit(r.circuit)}).`;
   });
   return `Horarios de atención de Conducar (todos los días, incluye domingos y feriados):\n${lines.join("\n")}`;
 }
@@ -155,7 +156,7 @@ export async function getNextValidDates(
 
 /** Resumen de horario legible para un rango de fechas disponibles. */
 export function formatSlots(slots: SlotAvailability[]): string {
-  return slots.map((s) => s.slot).join(", ");
+  return slots.map((s) => formatCustomerTime(s.slot)).join(", ");
 }
 
 export function minutesLabel(min: number): string {

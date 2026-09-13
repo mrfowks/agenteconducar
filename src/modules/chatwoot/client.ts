@@ -150,6 +150,20 @@ export async function sendTextMessage(conversationId: number, content: string): 
   });
 }
 
+/**
+ * Asigna una conversación a un agente específico en Chatwoot.
+ * Usa PATCH /api/v1/accounts/{id}/conversations/{id} con assignee_id.
+ */
+export async function assignConversation(
+  conversationId: number,
+  assigneeId: number,
+): Promise<void> {
+  await chatwootFetch(accountPath(`/conversations/${conversationId}`), {
+    method: "PATCH",
+    json: { assignee_id: assigneeId },
+  });
+}
+
 export interface MediaPayload {
   buffer: Buffer;
   filename: string;

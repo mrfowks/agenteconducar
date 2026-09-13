@@ -27,7 +27,7 @@ export function detectEscalationTrigger(text: string): TicketReason | null {
 
   // El usuario pide hablar con una persona: siempre a un asesor humano.
   const human =
-    /\b(hablar\s+con|quiero|necesito)\s+(un(?:a)?\s+)?(asesor|agente|persona|humano|alguien)\b|\bhablar\s+con\s+(un(?:a)?\s+)?ser\b|\batender\w*\s*un(?:a)?\s+asesor\b|\bp[aá]same\s+con\s+(un(?:a)?\s+)?(asesor|agente|persona|humano|alguien)\b/.test(t);
+    /\basesor(?![a-záéíóúü])|\b(hablar\s+con|quiero|necesito)\s+(un(?:a)?\s+)?(asesor|agente|persona|humano|alguien)\b|\bhablar\s+con\s+(un(?:a)?\s+)?ser\b|\batender\w*\s*un(?:a)?\s+asesor\b|\bp[aá]same\s+con\s+(un(?:a)?\s+)?(asesor|agente|persona|humano|alguien)\b/.test(t);
   if (human) return "NO_SOLUTION";
 
   // NOTA: "más prácticas", "mejorar paquete" y "requisitos de licencia/categoría" NO se escalan aquí:

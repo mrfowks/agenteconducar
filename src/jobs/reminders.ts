@@ -3,7 +3,7 @@ import { prisma } from "../db/client";
 import { env } from "../config/env";
 import { sendText } from "../modules/chatwoot/delivery";
 import { logOutgoing } from "../modules/messages/service";
-import { toLocalDateKey, weekdayName } from "../domain/calendar";
+import { toLocalDateKey, weekdayName, formatCustomerTime } from "../domain/calendar";
 
 export function startReminders(): void {
   cron.schedule("*/5 * * * *", () => {
@@ -34,7 +34,7 @@ async function runReminders(): Promise<void> {
 
     if (!r.reminder24h && diffHours <= 24 && diffHours > 2) {
       const text =
-        `⏰ Recordatorio: tu ${servicio} en Conducar es mañana ${weekdayName(new Date(r.date))} a las ${r.startTime} ` +
+        `⏰ Recordatorio: tu ${servicio} en Conducar es mañana ${weekdayName(new Date(r.date))} a las ${formatCustomerTime(r.startTime)} ` +
         `(categoría ${r.category.code}, ${circuit}). Llega con anticipación: la atención es por orden de llegada.`;
       await sendReminder(r.client.phone, text);
       await prisma.reservation.update({ where: { id: r.id }, data: { reminder24h: true } });
@@ -42,7 +42,7 @@ async function runReminders(): Promise<void> {
 
     if (!r.reminder2h && diffHours <= 2) {
       const text =
-        `🚗 Te esperamos en Conducar en 2 horas: ${servicio} de ${r.startTime} a ${r.endTime} ` +
+        `🚗 Te esperamos en Conducar en 2 horas: ${servicio} de ${formatCustomerTime(r.startTime)} a ${formatCustomerTime(r.endTime)} ` +
         `(categoría ${r.category.code}, ${circuit}). ¡Nos vemos pronto!`;
       await sendReminder(r.client.phone, text);
       await prisma.reservation.update({ where: { id: r.id }, data: { reminder2h: true } });

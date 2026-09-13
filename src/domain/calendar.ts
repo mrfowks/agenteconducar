@@ -72,6 +72,17 @@ export function nowTime(timezone: string): TimeStr {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/**
+ * Convierte hora 24h ("HH:MM") a formato 12h para mostrar al cliente.
+ * Ejemplos: "05:30" → "05:30 AM", "14:00" → "02:00 PM", "00:00" → "12:00 AM"
+ */
+export function formatCustomerTime(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 export function slotIsInFuture(
   date: Date,
   start: TimeStr,

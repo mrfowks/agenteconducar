@@ -150,3 +150,21 @@ test("H13. 'ayuda' sola → NO handoff", () => {
 test("H14. 'informe' solo → NO handoff", () => {
   assert.equal(detectEscalationTrigger("informe"), null);
 });
+
+// ── Handoff: "asesor" standalone ──────────────────────────────────────────
+
+test("H15. 'asesor' solo → handoff", () => {
+  assert.equal(detectEscalationTrigger("asesor"), "NO_SOLUTION");
+});
+
+test("H16. 'Asesor' con mayúscula → handoff", () => {
+  assert.equal(detectEscalationTrigger("Asesor"), "NO_SOLUTION");
+});
+
+test("H17. 'asesoría' sola → NO handoff", () => {
+  assert.equal(detectEscalationTrigger("asesoría"), null);
+});
+
+test("H18. 'asesoría sobre paquetes' → NO handoff", () => {
+  assert.equal(detectEscalationTrigger("asesoría sobre paquetes"), null);
+});

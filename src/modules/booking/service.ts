@@ -1,9 +1,9 @@
 import { Activity, Circuit, ReservationStatus, TicketReason } from "@prisma/client";
 import { prisma } from "../../db/client";
 import { env } from "../../config/env";
-import { toLocalDateKey, weekdayName } from "../../domain/calendar";
+import { toLocalDateKey, weekdayName, formatCustomerTime } from "../../domain/calendar";
 import { formatCircuit, getAvailableSlots } from "../calendar/service";
-import { muteBot } from "../handoff/service";
+import { muteBot, handoffToHuman } from "../handoff/service";
 import { getContext, logOutgoing } from "../messages/service";
 import { sendImage, sendText } from "../chatwoot/delivery";
 import { createTicket } from "../tickets/service";
@@ -127,7 +127,7 @@ export async function sendPaymentInstructions(phone: string, reservation: any) {
     `• Servicio: ${activityLabel} categoría ${category?.code}\n` +
     `• Circuito: ${formatCircuit(reservation.circuit)}\n` +
     `• Fecha: ${weekdayName(new Date(reservation.date))} ${dateKey}\n` +
-    `• Hora: ${reservation.startTime}–${reservation.endTime} (${reservation.durationMin} min)\n` +
+    `• Hora: ${formatCustomerTime(reservation.startTime)}–${formatCustomerTime(reservation.endTime)} (${reservation.durationMin} min)\n` +
     `• Precio: ${env.business.currency} ${price}${packageNote}\n\n` +
     `Para confirmar tu reserva debes realizar el pago previo. Escanea el código QR y paga por Yape o Plin, luego envíanos el comprobante por este chat.`;
 
@@ -193,7 +193,7 @@ export async function handleVoucherReceived(
   await createTicket({
     phone,
     reason: "PAYMENT",
-    summary: `Validar comprobante de pago para reserva de ${reservation.category.code} (${formatCircuit(reservation.circuit)}) el ${toLocalDateKey(new Date(reservation.date), env.business.timezone)} a las ${reservation.startTime}.`,
+    summary: `Validar comprobante de pago para reserva de ${reservation.category.code} (${formatCircuit(reservation.circuit)}) el ${toLocalDateKey(new Date(reservation.date), env.business.timezone)} a las ${formatCustomerTime(reservation.startTime)}.`,
     context,
     reservationId: reservation.id,
   });
@@ -215,7 +215,7 @@ export async function requestChange(phone: string, reason: TicketReason, summary
     context,
     reservationId: undefined,
   });
-  await muteBot(phone);
+  await handoffToHuman(phone);
 
   const text =
     "Entendido. Te voy a transferir con un asesor especializado para ayudarte con este caso. En breve te contactamos.";

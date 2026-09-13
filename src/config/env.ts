@@ -249,6 +249,7 @@ export const env = {
     webhookSecret: chatwootConfig.webhookSecret,
     webhookPath: process.env.CHATWOOT_WEBHOOK_PATH ?? "/webhooks/chatwoot",
     botSenderId: Number(process.env.CHATWOOT_BOT_SENDER_ID ?? "0") || undefined,
+    assigneeId: Number(process.env.CHATWOOT_ASSIGNEE_ID ?? "0") || undefined,
     timeoutMs: Number(process.env.CHATWOOT_TIMEOUT_MS ?? 15000),
     maxRetries: Number(process.env.CHATWOOT_MAX_RETRIES ?? 3),
   },

@@ -11,7 +11,7 @@ import {
 } from "../booking/service";
 import { detectEscalationTrigger } from "../payments/service";
 import { logIncoming, logOutgoing } from "../messages/service";
-import { isBotActive } from "../handoff/service";
+import { isBotActive, handoffToHuman } from "../handoff/service";
 import {
   buildMessageId,
   buildStoragePath,
@@ -354,6 +354,8 @@ export async function processIncomingMessage(payload: ChatwootMessagePayload): P
   if (trigger) {
     await actLikeHuman(async () => {
       await requestChange(phone, trigger, text.slice(0, 500));
+      // Asignar conversación en Chatwoot a agente humano (si configurado)
+      await handoffToHuman(phone, extracted.chatwootConversationId, env.chatwoot.assigneeId);
     });
     return;
   }
