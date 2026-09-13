@@ -60,7 +60,18 @@ export function messageFilter(
   if (sender.type === "AgentBot" || sender.type === "Captain::Assistant") {
     return { process: false, reason: "emisor_bot_no_humano" };
   }
-  if (sender.type !== "contact") return { process: false, reason: "emisor_no_contacto" };
+  if (sender.type !== "contact") {
+    // Tolerar sender.type ausente/null si hay evidencia válida de contacto
+    // (source_id numérico o phone_number). Esto cubre payloads reales de
+    // Chatwoot v4.17.1 donde sender.type puede no estar presente.
+    if (sender.type === undefined || sender.type === null) {
+      if (!extractPhoneFromPayload(payload)) {
+        return { process: false, reason: "emisor_no_contacto" };
+      }
+    } else {
+      return { process: false, reason: "emisor_no_contacto" };
+    }
+  }
   if (payload.account?.id !== options.accountId) {
     return { process: false, reason: "account_incorrecto" };
   }

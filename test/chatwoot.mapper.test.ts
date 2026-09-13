@@ -186,3 +186,19 @@ test("L13. extensión de respaldo VÁLIDA (A-Za-z0-9 1-16 chars) se mantiene", (
     /^\d{13}_[0-9a-f-]{36}\.bin$/,
   );
 });
+
+test("L14. normalizePhone con variantes +51", () => {
+  // normalizePhone está en whatsapp/client.ts; extractPhoneFromPayload lo usa internamente
+  // Verificamos a través de extractPhoneFromPayload con payloads que usan esas variantes
+  const payload1 = { sender: { phone_number: "+51917595954" } };
+  assert.equal(extractPhoneFromPayload(payload1), "51917595954");
+
+  const payload2 = { sender: { phone_number: "51917595954" } };
+  assert.equal(extractPhoneFromPayload(payload2), "51917595954");
+
+  const payload3 = { sender: { phone_number: "917595954" } };
+  assert.equal(extractPhoneFromPayload(payload3), "917595954");
+
+  const payload4 = { conversation: { contact_inbox: { source_id: "+51917595954" } } };
+  assert.equal(extractPhoneFromPayload(payload4), "51917595954");
+});

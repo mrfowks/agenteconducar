@@ -141,3 +141,105 @@ test("K2. AgentBot no es humano (no debe mute-bot)", () => {
   assert.equal(isHumanUserSender({ id: 9, type: "Captain::Assistant" }, undefined), false);
   assert.equal(isHumanUserSender({ id: 88, type: "user" }, 88), false); // es el propio bot
 });
+
+// ── emisor_no_contacto: sender.type ausente/null con evidencia válida ──
+
+test("E2. sender.type undefined + source_id válido → procesa", () => {
+  const res = messageFilter(
+    validPayload({ sender: { id: 123, phone_number: "+51917595954" } }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
+
+test("E3. sender.type null + source_id válido → procesa", () => {
+  const res = messageFilter(
+    validPayload({ sender: { id: 123, type: null, phone_number: "+51917595954" } }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
+
+test("E4. sender.type undefined sin evidencia de contacto → rechaza", () => {
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 123 },
+      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "bsuid-abc-123" } },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "emisor_no_contacto" });
+});
+
+test("E5. sender.type null sin evidencia de contacto → rechaza", () => {
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 123, type: null },
+      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, contact_id: 42, inbox_id: 9 } },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "emisor_no_contacto" });
+});
+
+test("E6. sender.type 'system' desconocido sin evidencia → rechaza", () => {
+  const res = messageFilter(
+    validPayload({ sender: { id: 99, type: "system" } }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "emisor_no_contacto" });
+});
+
+test("E7. sender.type 'Contact' (capital C) → rechaza", () => {
+  const res = messageFilter(
+    validPayload({ sender: { id: 7, type: "Contact", phone_number: "+51999988777" } }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "emisor_no_contacto" });
+});
+
+test("G3. sender.type 'user' explícito → emisor_usuario_panel", () => {
+  const res = messageFilter(
+    validPayload({ sender: { id: 88, type: "user", name: "Mary" } }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "emisor_usuario_panel" });
+});
+
+test("E8. payload realista v4.17.1 sin sender.type → procesa", () => {
+  // Payload exacto del caso real de producción
+  const payload = {
+    event: "message_created",
+    id: 17,
+    content: "Hola",
+    message_type: "incoming",
+    private: false,
+    sender: {
+      id: 123,
+      phone_number: "+51917595954",
+    },
+    conversation: {
+      id: 55,
+      inbox_id: 9,
+      contact_inbox: {
+        contact_id: 42,
+        source_id: "51917595954",
+      },
+    },
+    account: { id: 1 },
+  };
+  const res = messageFilter(payload, OPTIONS);
+  assert.deepEqual(res, { process: true });
+});
+
+test("E9. sender.type undefined + sender.phone_number → procesa", () => {
+  // Sin source_id, solo phone_number en sender
+  const res = messageFilter(
+    validPayload({
+      sender: { id: 123, phone_number: "51917595954" },
+      conversation: { id: 55, inbox_id: 9, contact_inbox: { id: 3, contact_id: 42, inbox_id: 9 } },
+    }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: true });
+});
