@@ -15,6 +15,7 @@ import { isBotActive } from "../handoff/service";
 import {
   buildMessageId,
   buildStoragePath,
+  ChatwootAttachment,
   ChatwootMessagePayload,
   extractFromPayload,
   isHumanUserSender,
@@ -66,6 +67,78 @@ export function dataUrlToBuffer(
     buffer: base64Tag === ";base64" ? Buffer.from(data, "base64") : Buffer.from(data, "utf8"),
     mimeType: mimeType || undefined,
   };
+}
+
+// ── Adjuntos (Chatwoot v4.17.1) ──────────────────────────────
+
+/** Tamaño máximo de un adjunto descargado: 10 MB. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+export interface ResolvedAttachment {
+  buffer: Buffer;
+  mimeType: string;
+}
+
+export interface ResolveAttachmentDeps {
+  /** Inyectable para tests; por defecto el cliente real. */
+  downloadAttachment?: (
+    fileUrl: string,
+    options?: { timeoutMs?: number },
+  ) => Promise<{ buffer: Buffer; mimeType: string }>;
+}
+
+function enforceAttachmentLimit(attachmentId: number, buffer: Buffer): Buffer {
+  if (buffer.length > MAX_ATTACHMENT_BYTES) {
+    throw new Error(
+      `adjunto ${attachmentId} excede el límite de MAX_ATTACHMENT_BYTES (${MAX_ATTACHMENT_BYTES} bytes; recibidos ${buffer.length}): se rechaza de forma segura`,
+    );
+  }
+  return buffer;
+}
+
+/**
+ * Resuelve un adjunto a `{ buffer, mimeType }`:
+ *   1. `file_url ?? data_url` que es una URL http(s) REAL (Active Storage en
+ *      Chatwoot v4.17.1, redirect 301, posible auth vía `api_access_token`) →
+ *      descarga con `downloadAttachment` y valida MAX_ATTACHMENT_BYTES.
+ *   2. `data:` URI → `dataUrlToBuffer` (compatibilidad legacy).
+ *   3. Cualquier otro formato → warning + `Buffer.alloc(0)` (rechazo seguro,
+ *      NUNCA bytes basura).
+ */
+export async function resolveAttachment(
+  attachment: ChatwootAttachment,
+  deps: ResolveAttachmentDeps = {},
+): Promise<ResolvedAttachment> {
+  const doDownload = deps.downloadAttachment ?? downloadAttachment;
+  const url = attachment.file_url ?? attachment.data_url;
+
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    const dl = await doDownload(url, { timeoutMs: env.chatwoot.timeoutMs });
+    return { buffer: enforceAttachmentLimit(attachment.id, dl.buffer), mimeType: dl.mimeType };
+  }
+
+  if (typeof url === "string" && url.startsWith("data:")) {
+    const parsed = dataUrlToBuffer(url);
+    return {
+      buffer: enforceAttachmentLimit(attachment.id, parsed.buffer),
+      mimeType: parsed.mimeType ?? attachment.content_type ?? "application/octet-stream",
+    };
+  }
+
+  console.warn(
+    `[chatwoot-proc] adjunto ${attachment.id} sin file_url/data_url http(s) ni data: válida; se omite (rechazo seguro, sin bytes basura)`,
+  );
+  return { buffer: Buffer.alloc(0), mimeType: "application/octet-stream" };
+}
+
+/**
+ * MIME efectivo para almacenar: usa el content-type de la descarga salvo que
+ * sea genérico (`application/octet-stream`), en cuyo caso cae a `sniffMimeType`
+ * (detección por primeros bytes, delivery.ts) como respaldo.
+ */
+export function resolveStoredMimeType(dlMimeType: string, buffer: Buffer): string {
+  if (dlMimeType && dlMimeType !== "application/octet-stream") return dlMimeType;
+  return delivery.sniffMimeType(buffer);
 }
 
 /**
@@ -129,29 +202,20 @@ export async function processIncomingMessage(payload: ChatwootMessagePayload): P
   if (extracted.attachments.length > 0) {
     const attachment = extracted.attachments[0];
     try {
-      let buffer: Buffer | null = null;
-      let mimeType: string | undefined;
-      if (attachment.file_url) {
-        const dl = await downloadAttachment(attachment.file_url, {
-          timeoutMs: env.chatwoot.timeoutMs,
-        });
-        buffer = dl.buffer;
-        mimeType = dl.mimeType;
-      } else if (attachment.data_url) {
-        const parsed = dataUrlToBuffer(attachment.data_url);
-        buffer = parsed.buffer;
-        mimeType = parsed.mimeType ?? attachment.content_type;
-      } else {
+      const { buffer, mimeType: dlMimeType } = await resolveAttachment(attachment);
+      if (buffer.length === 0) {
         console.warn(
-          `[chatwoot-proc] adjunto ${attachment.id} sin file_url ni data_url; se omite (REQUIERE VERIFICACIÓN EN CHATWOOT)`,
+          `[chatwoot-proc] adjunto ${attachment.id} rechazado de forma segura (formato inválido/vacío); se omite (messageId=${extracted.messageId})`,
         );
-      }
-
-      if (buffer && buffer.length > 0) {
-        const storagePath = buildStoragePath(mimeType ?? "application/octet-stream", attachment.extension);
+      } else {
+        // sniffMimeType como fallback si la descarga no dio content-type
+        // específico (application/octet-stream) — cadena ya probada:
+        // mimeToExtension + buildAttachmentFilename + buildStoragePath.
+        const mimeType = resolveStoredMimeType(dlMimeType, buffer);
+        const storagePath = buildStoragePath(mimeType, attachment.extension);
         fs.mkdirSync(path.dirname(storagePath), { recursive: true });
         fs.writeFileSync(storagePath, buffer);
-        firstAttachment = { storagePath, mimeType: mimeType ?? "application/octet-stream", fileSize: buffer.length };
+        firstAttachment = { storagePath, mimeType, fileSize: buffer.length };
         console.log(`[chatwoot-flow] MEDIA_IN_STORAGE_SUCCESS messageId=${extracted.messageId} phone=${phone} path=${storagePath}`);
       }
     } catch (err) {

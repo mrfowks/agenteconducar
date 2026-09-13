@@ -1,11 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  extractAssigneeChange,
+  handleConversationEvent,
   messageFilter,
   resolveChangedValue,
   shouldMuteOnMessage,
   ChatwootFilterOptions,
 } from "../src/webhooks/chatwoot";
+import { ChatwootMessagePayload } from "../src/modules/chatwoot/mapper";
 import { shouldRespondForBot } from "../src/modules/chatwoot/processor";
 
 const OPTIONS: ChatwootFilterOptions = { accountId: 1, inboxId: 9 };
@@ -128,4 +131,194 @@ test("R8. assignee_id ausente o no numérico → null (NO mutea)", () => {
   assert.equal(resolveChangedValue(undefined), null);
   assert.equal(resolveChangedValue("42"), null);
   assert.equal(resolveChangedValue([null, "42"]), null);
+});
+
+// ── B1: conversation_status_changed con `status` a nivel RAÍZ (v4.17.1) ────
+
+function conversationEventHandlers() {
+  const muted: string[] = [];
+  const released: string[] = [];
+  return {
+    muted,
+    released,
+    handlers: {
+      muteBot: async (phone: string) => {
+        muted.push(phone);
+      },
+      releaseBot: async (phone: string) => {
+        released.push(phone);
+      },
+    },
+  };
+}
+
+test("HC1. conversation_status_changed con status raíz 'resolved' → releaseBot con el teléfono (contact_inbox raíz)", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_status_changed",
+      status: "resolved",
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+      conversation: { id: 55 },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, ["51999988777"]);
+  assert.deepEqual(muted, []);
+});
+
+test("HC2. conversation_status_changed con status raíz 'open' → NO releaseBot", async () => {
+  const { released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_status_changed",
+      status: "open",
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+      conversation: { id: 55 },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, []);
+});
+
+test("HC3. conversation_status_changed 'resolved' con teléfono vía meta.sender.phone_number (raíz) → releaseBot", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_status_changed",
+      status: "resolved",
+      meta: { sender: { id: 7, name: "Ana", type: "contact", phone_number: "+51999988777" } },
+      conversation: { id: 55 },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, ["51999988777"]);
+  assert.deepEqual(muted, []);
+});
+
+test("HC4. conversation_status_changed 'resolved' sin teléfono → sin error y sin release", async () => {
+  const { released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    { event: "conversation_status_changed", status: "resolved", conversation: { id: 55 } } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, []);
+});
+
+test("HC5. tolerancia: conversation.status anidado 'resolved' también libera (primaria: raíz)", async () => {
+  const { released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_status_changed",
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+      conversation: { id: 55, status: "resolved" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, ["51999988777"]);
+});
+
+// ── B2: conversation_updated con changed_attributes como ARRAY (v4.17.1) ────
+
+test("HC6. conversation_updated con ARRAY documentado [{assignee_id:{previous_value:null,current_value:88}}] → muteBot", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ assignee_id: { previous_value: null, current_value: 88 } }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(muted, ["51999988777"]);
+  assert.deepEqual(released, []);
+});
+
+test("HC7. extractAssigneeChange: formato ARRAY documentado + tolerancias legacy", () => {
+  // formato documentado: [{ "assignee_id": { "previous_value": X, "current_value": Y } }]
+  assert.deepEqual(
+    extractAssigneeChange([{ assignee_id: { previous_value: null, current_value: 88 } }]),
+    { previous_value: null, current_value: 88 },
+  );
+  // desasignación documentada
+  assert.deepEqual(
+    extractAssigneeChange([{ assignee_id: { previous_value: 88, current_value: null } }]),
+    { previous_value: 88, current_value: null },
+  );
+  // tolerancia: assignee_id numérico directo en el array
+  assert.deepEqual(extractAssigneeChange([{ assignee_id: 88 }]), { current_value: 88 });
+  // tolerancia: Record legacy { assignee_id: [previo, nuevo] } → último
+  assert.deepEqual(extractAssigneeChange({ assignee_id: [null, 42] }), {
+    previous_value: null,
+    current_value: 42,
+  });
+  // sin assignee en el array → undefined
+  assert.equal(
+    extractAssigneeChange([{ status: { previous_value: "open", current_value: "resolved" } }]),
+    undefined,
+  );
+  assert.equal(extractAssigneeChange([]), undefined);
+  assert.equal(extractAssigneeChange(undefined), undefined);
+});
+
+test("HC8. conversation_updated con assignee_id numérico directo [{assignee_id:88}] → muteBot (tolerancia)", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ assignee_id: 88 }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(muted, ["51999988777"]);
+  assert.deepEqual(released, []);
+});
+
+test("HC9. conversation_updated con current_value:null (desasignación) → releaseBot", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ assignee_id: { previous_value: 88, current_value: null } }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, ["51999988777"]);
+  assert.deepEqual(muted, []);
+});
+
+test("HC10. changed_attributes sin assignee_id → NI mute NI release", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ status: { previous_value: "open", current_value: "resolved" } }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(muted, []);
+  assert.deepEqual(released, []);
+});
+
+test("HC11. humano asignado → muteBot invocado y el bot queda mudo (no responde)", async () => {
+  let botActive = true;
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ assignee_id: { previous_value: null, current_value: 88 } }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    {
+      muteBot: async () => {
+        botActive = false;
+      },
+      releaseBot: async () => {},
+    },
+  );
+  assert.equal(botActive, false, "muteBot dejó la conversación en manos humanas (bot mudo)");
+  // Comportamiento central: con el bot mudo, aunque un contacto normal escriba, NO responde.
+  assert.equal(shouldRespondForBot(botActive, { id: 7, type: "contact" }, undefined), false);
 });

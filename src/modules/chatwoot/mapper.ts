@@ -19,6 +19,15 @@ export interface ChatwootAttachment {
   extension?: string;
 }
 
+/**
+ * `changed_attributes` REAL de Chatwoot v4.17.1: es un ARRAY de objetos por
+ * atributo (`[{ "assignee_id": { "previous_value": X, "current_value": Y } }]`).
+ * Se tolera también el formato Record (legacy) de versiones anteriores.
+ */
+export type ChatwootChangedAttributes =
+  | Array<Record<string, unknown>>
+  | Record<string, unknown>;
+
 export interface ChatwootMessagePayload {
   event?: string;
   id?: number;
@@ -28,6 +37,22 @@ export interface ChatwootMessagePayload {
   source_id?: string | null;
   content_type?: string | null;
   content_attributes?: Record<string, unknown>;
+  /** `status` a nivel raíz en eventos de conversación (v4.17.1). */
+  status?: string;
+  /** ARRAY (o Record legacy) con los atributos cambiados vs. Chatwoot. */
+  changed_attributes?: ChatwootChangedAttributes;
+  /** `contact_inbox` a nivel raíz en eventos de conversación (v4.17.1). */
+  contact_inbox?: { id?: number; contact_id?: number; inbox_id?: number; source_id?: string };
+  /** `meta` a nivel raíz en eventos de conversación (v4.17.1). */
+  meta?: {
+    sender?: {
+      id?: number;
+      name?: string;
+      type?: string;
+      phone_number?: string;
+    };
+    assignee?: { id?: number; name?: string };
+  };
   sender?: {
     id?: number;
     name?: string;
@@ -76,19 +101,29 @@ export function looksLikePhone(raw: string): boolean {
 
 /**
  * Orden de fuentes para el teléfono (E.164):
- *   1. conversation.contact_inbox.source_id (wa_id en WhatsApp).
- *   2. sender.phone_number.
- *   3. null → log + mapeo por inbox_id+source_id (REQUIERE FASE POSTERIOR si
+ *   1. conversation.contact_inbox.source_id (wa_id en WhatsApp) — message_created.
+ *   2. contact_inbox.source_id a nivel raíz — eventos de conversación (v4.17.1).
+ *   3. sender.phone_number — message_created.
+ *   4. meta.sender.phone_number a nivel raíz — eventos de conversación (v4.17.1).
+ *   5. null → log + mapeo por inbox_id+source_id (REQUIERE FASE POSTERIOR si
  *      la transición BSUID de 2026 cambia el formato).
  */
 export function extractPhoneFromPayload(payload: ChatwootMessagePayload): string | null {
-  const sourceId = payload.conversation?.contact_inbox?.source_id;
-  if (typeof sourceId === "string" && looksLikePhone(sourceId)) {
-    return normalizePhone(sourceId);
+  const nestedSourceId = payload.conversation?.contact_inbox?.source_id;
+  if (typeof nestedSourceId === "string" && looksLikePhone(nestedSourceId)) {
+    return normalizePhone(nestedSourceId);
+  }
+  const rootSourceId = payload.contact_inbox?.source_id;
+  if (typeof rootSourceId === "string" && looksLikePhone(rootSourceId)) {
+    return normalizePhone(rootSourceId);
   }
   const senderPhone = payload.sender?.phone_number;
   if (typeof senderPhone === "string" && looksLikePhone(senderPhone)) {
     return normalizePhone(senderPhone);
+  }
+  const metaPhone = payload.meta?.sender?.phone_number;
+  if (typeof metaPhone === "string" && looksLikePhone(metaPhone)) {
+    return normalizePhone(metaPhone);
   }
   return null;
 }

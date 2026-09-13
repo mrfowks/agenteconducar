@@ -82,6 +82,109 @@ export function resolveChangedValue(value: unknown): number | null {
 }
 
 /**
+ * Extrae el cambio de assignee del formato DOCUMENTADO de Chatwoot v4.17.1:
+ * `changed_attributes` es un ARRAY de objetos por atributo:
+ *   [{ "assignee_id": { "previous_value": X, "current_value": Y } }]
+ * Devuelve `{ previous_value?, current_value? }` o `undefined` si no hay cambio
+ * de assignee (p.ej. el array solo contiene otros atributos).
+ *
+ * Tolerancias legacy (se conservan sin romper el caso documentado):
+ *   - `[{ assignee_id: 88 }]` (número directo) → `{ current_value: 88 }`.
+ *   - `{ assignee_id: [previo, nuevo] }` (Record) → `{ current_value: último }`.
+ */
+export function extractAssigneeChange(
+  changedAttributes: unknown,
+): { previous_value?: unknown; current_value?: unknown } | undefined {
+  const entries = Array.isArray(changedAttributes) ? changedAttributes : [changedAttributes];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const assigneeId = (entry as Record<string, unknown>).assignee_id;
+    if (assigneeId === undefined) continue;
+    return parseAssigneeChange(assigneeId);
+  }
+  return undefined;
+}
+
+function parseAssigneeChange(
+  value: unknown,
+): { previous_value?: unknown; current_value?: unknown } | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const obj = value as { previous_value?: unknown; current_value?: unknown };
+    if ("current_value" in obj) {
+      return { previous_value: obj.previous_value, current_value: obj.current_value };
+    }
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    // Legacy [previo, nuevo] → current_value = último elemento.
+    return { previous_value: value[0], current_value: value[value.length - 1] };
+  }
+  if (typeof value === "number") {
+    return { current_value: value };
+  }
+  return undefined;
+}
+
+export interface HandoffEventHandlers {
+  muteBot: (phone: string) => Promise<void>;
+  releaseBot: (phone: string) => Promise<void>;
+}
+
+/**
+ * Procesa los eventos de CONVERSACIÓN de Chatwoot v4.17.1 con side-effects
+ * inyectables (testeable sin HTTP ni BD):
+ *   - conversation_status_changed: `status` a nivel RAÍZ. `resolved` →
+ *     releaseBot; "open"/otros → NO se libera (solo log).
+ *   - conversation_updated: `changed_attributes` como ARRAY.
+ *     current_value numérico (humano asignado) → muteBot;
+ *     current_value === null (desasignación) → releaseBot.
+ * El teléfono sale de extractPhoneFromPayload (raíz: contact_inbox.source_id /
+ * meta.sender.phone_number; anidados legacy).
+ */
+export async function handleConversationEvent(
+  payload: ChatwootMessagePayload,
+  handlers: HandoffEventHandlers,
+): Promise<void> {
+  if (payload.event === "conversation_status_changed") {
+    const status = payload.status ?? payload.conversation?.status;
+    if (status === "resolved") {
+      const phone = extractPhoneFromPayload(payload);
+      if (phone) {
+        await handlers.releaseBot(phone);
+        console.log(`[chatwoot-webhook] conversación resuelta → bot liberado (${phone})`);
+      } else {
+        console.warn("[chatwoot-webhook] conversación resuelta sin teléfono; no se libera el bot");
+      }
+      return;
+    }
+    console.log(
+      `[chatwoot-webhook] conversation_status_changed status="${status ?? "desconocido"}"; no se libera el bot`,
+    );
+    return;
+  }
+
+  if (payload.event === "conversation_updated") {
+    const change = extractAssigneeChange(payload.changed_attributes);
+    const phone = extractPhoneFromPayload(payload);
+    if (!phone) {
+      console.warn("[chatwoot-webhook] conversation_updated sin teléfono; no mute ni release");
+      return;
+    }
+    if (change !== undefined && typeof change.current_value === "number") {
+      await handlers.muteBot(phone);
+      console.log(`[chatwoot-webhook] assignee humano en conversation_updated → bot mudo (${phone})`);
+      return;
+    }
+    if (change !== undefined && change.current_value === null) {
+      await handlers.releaseBot(phone);
+      console.log(`[chatwoot-webhook] desasignación en conversation_updated → bot liberado (${phone})`);
+      return;
+    }
+    console.log("[chatwoot-webhook] conversation_updated sin cambio de assignee relevante; no mute ni release");
+  }
+}
+
+/**
  * ¿Un `message_created` de Chatwoot implica que un USUARIO HUMANO tomó el chat
  * (handoff → muteBot)?
  *
@@ -211,31 +314,18 @@ chatwootRouter.post("/", async (req: Request, res: Response) => {
   const payload = (req.body ?? {}) as ChatwootMessagePayload;
 
   // 3. Eventos de estado / handoff sin procesar el agente.
-
-  // conversation_status_changed → resolved → liberar bot (handoff existente).
-  if (payload.event === "conversation_status_changed") {
-    const phone = extractPhoneFromPayload(payload);
-    if (phone && payload.conversation?.status === "resolved") {
-      await releaseBot(phone);
-      console.log(`[chatwoot-webhook] conversación resuelta → bot liberado (${phone})`);
-    }
-    res.status(200).json({ ok: true });
-    return;
-  }
-
-  // conversation_updated → assignee humano asignado → muteBot.
-  // IMPORTANTE: Chatwoot construye `changed_attributes` desde Rails
-  // `previous_changes` con patrón de ARRAY [valor_anterior, valor_nuevo]; aquí
-  // se aceptan ambos formatos (número directo o array) y se usa el VALOR NUEVO.
-  if (payload.event === "conversation_updated") {
-    const changed = (payload as unknown as { changed_attributes?: Record<string, unknown> })
-      ?.changed_attributes ?? {};
-    const phone = extractPhoneFromPayload(payload);
-    const assigneeId = resolveChangedValue(changed.assignee_id);
-    if (phone && assigneeId !== null) {
-      await muteBot(phone);
-      console.log(`[chatwoot-webhook] assignee humano en conversation_updated → bot mudo (${phone})`);
-    }
+  // Estructura REAL de Chatwoot v4.17.1: `status` a nivel raíz (NO
+  // conversation.status) y `changed_attributes` como ARRAY
+  // `[{ assignee_id: { previous_value, current_value } }]`. El teléfono vive en
+  // `contact_inbox.source_id` y `meta.sender.phone_number` (raíz).
+  //   - resolved → releaseBot; "open"/otros → NO se libera.
+  //   - assignee humano (current_value numérico) → muteBot.
+  //   - desasignación (current_value null) → releaseBot.
+  if (
+    payload.event === "conversation_status_changed" ||
+    payload.event === "conversation_updated"
+  ) {
+    await handleConversationEvent(payload, { muteBot, releaseBot });
     res.status(200).json({ ok: true });
     return;
   }

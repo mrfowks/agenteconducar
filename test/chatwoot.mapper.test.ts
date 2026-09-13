@@ -122,3 +122,38 @@ test("L8. sniffMimeType detecta JPEG/PNG/GIF/WebP/PDF", () => {
   assert.equal(sniffMimeType(Buffer.from([0x25, 0x50, 0x44, 0x46])), "application/pdf");
   assert.equal(sniffMimeType(Buffer.from([0x00, 0x01, 0x02, 0x03])), "application/octet-stream");
 });
+
+// ── B1: extractPhoneFromPayload con fuentes a nivel raíz (v4.17.1) ─────────
+
+test("L9. extractPhoneFromPayload: contact_inbox.source_id a nivel raíz (eventos de conversación)", () => {
+  const payload = {
+    event: "conversation_status_changed",
+    status: "resolved",
+    contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "+51999988777" },
+    conversation: { id: 55 },
+    account: { id: 1 },
+  };
+  assert.equal(extractPhoneFromPayload(payload as any), "51999988777");
+});
+
+test("L10. extractPhoneFromPayload: meta.sender.phone_number a nivel raíz (eventos de conversación)", () => {
+  const payload = {
+    event: "conversation_updated",
+    changed_attributes: [{ assignee_id: { previous_value: null, current_value: 88 } }],
+    meta: { sender: { id: 7, name: "Ana", type: "contact", phone_number: "+51999988777" } },
+    conversation: { id: 55 },
+    account: { id: 1 },
+  };
+  assert.equal(extractPhoneFromPayload(payload as any), "51999988777");
+});
+
+test("L11. extractPhoneFromPayload: source_id raíz no numérico (BSUID) cae a meta.sender.phone_number", () => {
+  const payload = {
+    event: "conversation_status_changed",
+    status: "open",
+    contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "bsuid-abcdef-123" },
+    meta: { sender: { id: 7, type: "contact", phone_number: "51999888777" } },
+    conversation: { id: 55 },
+  };
+  assert.equal(extractPhoneFromPayload(payload as any), "51999888777");
+});
