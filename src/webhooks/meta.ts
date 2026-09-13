@@ -46,15 +46,15 @@ export const WELCOME_MESSAGE = `¡Hola! 🚗 Bienvenido al Circuito de Manejo Co
 
 ¿En qué te puedo ayudar hoy? Escribe una opción o dinos directamente qué consulta tienes:
 
-1️⃣ Reserva de simulacro de examen de manejo
+1️⃣ Alquiler de vehículo para examen práctico de manejo
 
-2️⃣ Reservar práctica de manejo
+2️⃣ Reserva de simulacro de examen de manejo
 
-3️⃣ Información de paquetes todo incluido
+3️⃣ Reservar práctica de manejo
 
-4️⃣ Horarios de atención
+4️⃣ Información de paquetes todo incluido
 
-5️⃣ Hablar con un asesor especializado`;
+5️⃣ Horarios de atención y presentación`;
 
 export const metaRouter = Router();
 

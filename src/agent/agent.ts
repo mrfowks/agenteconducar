@@ -7,6 +7,20 @@ import { TOOL_DEFINITIONS, TOOL_EXECUTORS } from "./tools";
 // ── Anti-loop constant ──────────────────────────────────────────────────────
 const FALLBACK_MESSAGE = "Estoy presentando un problema técnico. Un asesor humano te atenderá en breve.";
 
+// ── Router determinista: mapea opciones numéricas del menú a intenciones ────
+export const MENU_INTENTS: Record<string, string> = {
+  "1": "Quiero información sobre el alquiler de vehículo para rendir mi examen práctico de manejo",
+  "2": "Quiero reservar un simulacro de examen de manejo",
+  "3": "Quiero reservar una práctica de manejo",
+  "4": "Quiero información sobre los paquetes todo incluido",
+  "5": "Quiero saber los horarios de atención y presentación",
+};
+
+/** Si el texto es un número 1–5 exacto (tras trim), devuelve la intención expandida. */
+export function expandMenuIntent(text: string): string | null {
+  return MENU_INTENTS[text.trim()] ?? null;
+}
+
 // ── Logging helpers ──────────────────────────────────────────────────────────
 
 function detectProvider(err: unknown): "OPENAI" | "PRISMA" | "META" | "UNKNOWN" {
@@ -42,6 +56,14 @@ function logStepError(messageId: string, step: string, startMs: number, err: unk
 }
 
 const SYSTEM_PROMPT = `Eres el asistente virtual oficial de Conducar, un Centro de Evaluación que brinda prácticas de manejo y evaluaciones de licencia.
+
+MENÚ DE OPCIONES (el usuario puede escribir solo el número):
+1 = Alquiler de vehículo para examen práctico de manejo
+2 = Reserva de simulacro de examen de manejo
+3 = Reservar práctica de manejo
+4 = Información de paquetes todo incluido
+5 = Horarios de atención y presentación
+Cuando el usuario escriba solo un número del 1 al 5, interpreta su intención según esta lista y responde directamente a esa solicitud. NO repitas el menú ni preguntes "¿a qué te refieres?"; procede con la acción correspondiente.
 
 REGLAS OBLIGATORIAS (nunca las rompas):
 1. NUNCA inventes precios, horarios, promociones, disponibilidad, requisitos ni condiciones. Solo respondes con la información devuelta por las herramientas.
@@ -112,6 +134,12 @@ FECHA Y HORA ACTUALES (úsalas para interpretar días relativos; NUNCA inventes 
 export async function runAgent(phone: string, userText: string, isNewUser = false, messageId?: string): Promise<string> {
   // ── Correlation ID: use provided messageId or generate a fallback ──────────
   const mid = messageId ?? `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // ── Router determinista: expandir opciones numéricas del menú ─────────────
+  const expanded = expandMenuIntent(userText);
+  if (expanded) {
+    console.log(`[agent-flow] MENU_INTENT messageId=${mid} raw="${userText.trim()}" expanded="${expanded}"`);
+    userText = expanded;
+  }
   const runStart = Date.now();
   console.log(`[agent-flow] RUN_START messageId=${mid} phone=${phone} isNewUser=${isNewUser}`);
 
