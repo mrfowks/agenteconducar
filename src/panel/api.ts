@@ -12,6 +12,7 @@ import {
   replyToUser,
 } from "../modules/tickets/service";
 import { sendImage as deliverySendImage } from "../modules/chatwoot/delivery";
+import { TRUSTED_MIME_ALLOWLIST } from "../modules/chatwoot/mapper";
 import { prisma } from "../db/client";
 
 export const panelRouter = Router();
@@ -311,8 +312,13 @@ panelRouter.get("/api/media/:mediaId", requireAuth, async (req: Request, res: Re
 
     // 6. Devolver el archivo con los encabezados apropiados
     res.setHeader("Content-Type", mimeType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "public, max-age=86400"); // 24 horas
-    res.setHeader("Content-Disposition", `inline; filename="${require("path").basename(filePath)}"`);
+    // F6: inline SOLO para la allowlist de MIME confiable (imágenes/PDF);
+    // octet-stream o cualquier otro MIME se sirve como attachment (descarga).
+    const filename = require("path").basename(filePath);
+    const disposition = TRUSTED_MIME_ALLOWLIST.has(mimeType) ? "inline" : "attachment";
+    res.setHeader("Content-Disposition", `${disposition}; filename="${filename}"`);
     res.send(buffer);
   } catch (err) {
     console.error("[panel] Error sirviendo media:", err);

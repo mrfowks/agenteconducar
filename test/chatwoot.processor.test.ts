@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MAX_ATTACHMENT_BYTES,
+  pickAttachmentUrl,
   resolveAttachment,
   resolveStoredMimeType,
 } from "../src/modules/chatwoot/processor";
@@ -98,4 +99,38 @@ test("P6. resolveStoredMimeType: content-type genérico/vacío → sniffMimeType
     resolveStoredMimeType("application/octet-stream", Buffer.from([0x00, 0x01, 0x02, 0x03])),
     "application/octet-stream",
   );
+});
+
+// ── F2: resolución vacío-aware de file_url / data_url ──────────────────────
+
+test("P7. file_url vacío + data_url válido → se usa data_url (pickAttachmentUrl vacío-aware)", async () => {
+  const b64 = PNG.toString("base64");
+  const resolved = await resolveAttachment({
+    id: 905,
+    file_url: "",
+    data_url: `data:image/png;base64,${b64}`,
+  });
+  assert.equal(resolved.buffer.equals(PNG), true);
+  assert.equal(resolved.mimeType, "image/png");
+  // pickAttachmentUrl puro: file_url solo-espacios también se ignora.
+  assert.equal(pickAttachmentUrl({ id: 1, file_url: "   ", data_url: "x" }), "x");
+  assert.equal(pickAttachmentUrl({ id: 1, file_url: "https://a/x", data_url: "y" }), "https://a/x");
+  assert.equal(pickAttachmentUrl({ id: 1, file_url: "", data_url: "" }), undefined);
+  assert.equal(pickAttachmentUrl({ id: 1 }), undefined);
+});
+
+// ── F6: MIME remoto fuera de allowlist → NUNCA se almacena tal cual ────────
+
+test("P8. content-type image/svg+xml del servidor → sniff no reconoce → application/octet-stream (NUNCA svg)", () => {
+  // Un SVG real son bytes XML texto: sniff no lo reconoce.
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  assert.equal(resolveStoredMimeType("image/svg+xml", svg), "application/octet-stream");
+  assert.equal(
+    resolveStoredMimeType("image/svg+xml", Buffer.from([0x00, 0x01, 0x02, 0x03])),
+    "application/octet-stream",
+  );
+  // Allowlist confiable se mantiene intacta.
+  assert.equal(resolveStoredMimeType("application/pdf", PDF), "application/pdf");
+  assert.equal(resolveStoredMimeType("image/gif", PNG), "image/gif");
+  assert.equal(resolveStoredMimeType("image/jpeg", PNG), "image/jpeg");
 });

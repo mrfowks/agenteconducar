@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import dns from "dns";
+import net from "net";
 import { env } from "../../config/env";
 
 // ─────────────────────────────────────────────────────────────
@@ -266,41 +268,340 @@ export async function resolveConversation(conversationId: number): Promise<void>
 
 // ── Media entrante ──────────────────────────────────────────
 
+/** Tope por defecto de un adjunto descargado (10 MB, mismo valor que MAX_ATTACHMENT_BYTES). */
+export const DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/** Máximo de saltos de redirect permitidos en una descarga de adjunto. */
+export const MAX_ATTACHMENT_REDIRECTS = 2;
+
+export type LookupFn = (hostname: string) => Promise<readonly string[]>;
+
+async function defaultLookup(hostname: string): Promise<string[]> {
+  return await new Promise((resolve, reject) => {
+    dns.lookup(hostname, { all: true }, (err, addresses) => {
+      if (err) reject(err);
+      else resolve(addresses.map((a) => a.address));
+    });
+  });
+}
+
+function defaultPort(protocol: string): string {
+  if (protocol === "https:") return "443";
+  if (protocol === "http:") return "80";
+  return "";
+}
+
+/** ¿Dos URLs comparten origin (protocolo + host + puerto)? */
+export function sameOrigin(a: string, b: string): boolean {
+  let ua: URL;
+  let ub: URL;
+  try {
+    ua = new URL(a);
+    ub = new URL(b);
+  } catch {
+    return false;
+  }
+  return (
+    ua.protocol === ub.protocol &&
+    ua.hostname.toLowerCase() === ub.hostname.toLowerCase() &&
+    (ua.port || defaultPort(ua.protocol)) === (ub.port || defaultPort(ub.protocol))
+  );
+}
+
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+    return null;
+  }
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
+function ipv6Groups(ip: string): number[] | null {
+  let addr = ip;
+  const v4Match = addr.match(/^(.*:)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (v4Match) {
+    const v4 = ipv4ToInt(v4Match[2]);
+    if (v4 === null) return null;
+    const hex = v4.toString(16).padStart(8, "0");
+    addr = `${v4Match[1]}${hex.slice(0, 4)}:${hex.slice(4)}`;
+  }
+  const parts = addr.split("::");
+  if (parts.length > 2) return null;
+  const head = parts[0] ? parts[0].split(":") : [];
+  const tail = parts.length === 2 && parts[1] ? parts[1].split(":") : [];
+  const missing = 8 - head.length - tail.length;
+  if (missing < 0) return null;
+  const all = [...head, ...Array(missing).fill("0"), ...tail];
+  if (all.length !== 8) return null;
+  const groups: number[] = [];
+  for (const g of all) {
+    if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
+    groups.push(parseInt(g, 16));
+  }
+  return groups;
+}
+
+/**
+ * ¿Una IP concreta cae en rangos privados/link-local/metadata? Devuelve la razón
+ * (string) si debe bloquearse, o null si es una IP pública. Cubre los rangos
+ * exigidos: 127.0.0.0/8, 10/8, 172.16/12, 192.168/16, 169.254.0.0/16,
+ * ::1, fc00::/7, fe80::/10.
+ */
+export function privateIpReason(ip: string): string | null {
+  const host = ip.replace(/^\[|\]$/g, "");
+  if (net.isIPv4(host)) {
+    const int = ipv4ToInt(host);
+    if (int === null) return null;
+    if ((int & 0xff000000) === 0x7f000000) return "loopback (127.0.0.0/8)";
+    if ((int & 0xff000000) === 0x0a000000) return "rango privado (10.0.0.0/8)";
+    if (((int & 0xfff00000) >>> 0) === 0xac100000) return "rango privado (172.16.0.0/12)";
+    if (((int & 0xffff0000) >>> 0) === 0xc0a80000) return "rango privado (192.168.0.0/16)";
+    if (((int & 0xffff0000) >>> 0) === 0xa9fe0000) return "link-local/metadata (169.254.0.0/16)";
+    return null;
+  }
+  if (net.isIPv6(host)) {
+    const groups = ipv6Groups(host);
+    if (!groups) return null;
+    if (
+      groups[0] === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 &&
+      groups[4] === 0 && groups[5] === 0 && groups[6] === 0 && groups[7] === 1
+    ) {
+      return "loopback (::1)";
+    }
+    if ((groups[0] & 0xfe00) === 0xfc00) return "unique local (fc00::/7)";
+    if ((groups[0] & 0xffc0) === 0xfe80) return "link-local (fe80::/10)";
+    // IPv4-mapped (::ffff:a.b.c.d): se evalúa la IPv4 embebida.
+    if (
+      groups[0] === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 &&
+      groups[4] === 0 && groups[5] === 0xffff
+    ) {
+      const mappedV4 = ((groups[6] << 16) | groups[7]) >>> 0;
+      if ((mappedV4 & 0xff000000) === 0x7f000000) return "loopback vía IPv4-mapped (::ffff:127.0.0.0/8)";
+      if ((mappedV4 & 0xff000000) === 0x0a000000) return "rango privado vía IPv4-mapped (::ffff:10.0.0.0/8)";
+      if (((mappedV4 & 0xfff00000) >>> 0) === 0xac100000) return "rango privado vía IPv4-mapped (::ffff:172.16.0.0/12)";
+      if (((mappedV4 & 0xffff0000) >>> 0) === 0xc0a80000) return "rango privado vía IPv4-mapped (::ffff:192.168.0.0/16)";
+      if (((mappedV4 & 0xffff0000) >>> 0) === 0xa9fe0000) return "link-local vía IPv4-mapped (::ffff:169.254.0.0/16)";
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Valida que una URL de descarga de adjunto sea SEGURA contra SSRF:
+ *   - Solo `https:` (o `http:` si es exactamente el MISMO origin que `baseUrl`).
+ *   - Sin rangos privados/link-local/metadata (IP literal o por resolución DNS).
+ *   - Hostnames locales (`localhost`, `*.localhost`, `*.local`) siempre bloqueados.
+ * Devuelve `true` o un string con la razón del rechazo.
+ */
+export async function isSafeDownloadUrl(
+  url: string,
+  baseUrl: string,
+  options: { lookup?: LookupFn } = {},
+): Promise<true | string> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return `URL inválida (${url})`;
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return `protocolo no permitido (${parsed.protocol})`;
+  }
+  if (parsed.protocol === "http:" && !sameOrigin(parsed.href, baseUrl)) {
+    return `http no permitido fuera del mismo origin de Chatwoot (${parsed.href} vs base ${baseUrl})`;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
+    return `host local no permitido (${hostname})`;
+  }
+
+  const strippedHost = hostname.replace(/^\[|\]$/g, "");
+  if (net.isIP(strippedHost)) {
+    const reason = privateIpReason(strippedHost);
+    if (reason) return `IP no permitida ${strippedHost} (${reason})`;
+    return true;
+  }
+
+  const lookupFn = options.lookup ?? defaultLookup;
+  let addresses: readonly string[];
+  try {
+    addresses = await lookupFn(hostname);
+  } catch (err) {
+    return `no se pudo resolver ${hostname} (${err instanceof Error ? err.message : String(err)})`;
+  }
+  if (addresses.length === 0) return `hostname sin IPs (${hostname})`;
+  for (const ip of addresses) {
+    const reason = privateIpReason(ip);
+    if (reason) return `host ${hostname} resuelve a IP no permitida ${ip} (${reason})`;
+  }
+  return true;
+}
+
+export interface DownloadAttachmentOptions {
+  /** Timeout total de la descarga (abort). */
+  timeoutMs?: number;
+  /** Tope de bytes del adjunto; por defecto 10 MiB. */
+  maxBytes?: number;
+  /** baseUrl contra la que se evalúa same-origin (tests); producción usa env. */
+  baseUrl?: string;
+  /** Resolución DNS inyectable (tests); producción usa net.dns.lookup. */
+  lookup?: LookupFn;
+  /** fetch inyectable (tests); producción usa el fetch global. */
+  fetchImpl?: typeof fetch;
+}
+
+/** Lee el body por stream con corte en `maxBytes`; si excede, aborta y lanza. */
+async function readBodyCapped(
+  body: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+  sourceUrl: string,
+  controller: AbortController,
+): Promise<Buffer> {
+  if (!body) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.byteLength > 0) {
+        total += value.byteLength;
+        if (total > maxBytes) {
+          controller.abort();
+          throw new Error(
+            `[chatwoot-client] adjunto ${sourceUrl} supera el tope de ${maxBytes} bytes: descarga abortada de forma segura`,
+          );
+        }
+        chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
+}
+
 /**
  * Descarga un archivo adjunto por su file_url.
  *
- * REQUIERE VERIFICACIÓN EN CHATWOOT: la autenticación del file_url no está
- * documentada en los hechos verificados. Estrategia: intenta SIN header y, ante
- * 401/403, reintenta con `api_access_token`. Si tu instalación firma las URLs o
- * las protege con otro esquema, ajustar aquí.
+ * HARDENING (F1 + F4):
+ *   - Tope de tamaño DENTRO de la descarga: rechazo temprano por cabecera
+ *     `Content-Length` y lectura por stream con corte en `maxBytes` (abort).
+ *   - Anti-SSRF: `redirect: "manual"`, cada salto se valida con
+ *     `isSafeDownloadUrl` contra el MISMO baseUrl, máx. 2 saltos.
+ *   - El reintento con `api_access_token` (401/403) SOLO si la URL final es
+ *     exactamente same-origin (protocolo+host+puerto) con Chatwoot. El token
+ *     jamás se envía a otro host (ni siquiera dentro de un retry con redirect).
  */
 export async function downloadAttachment(
   fileUrl: string,
-  options: { timeoutMs?: number } = {},
+  options: DownloadAttachmentOptions = {},
 ): Promise<{ buffer: Buffer; mimeType: string }> {
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
   const timeoutMs = options.timeoutMs ?? env.chatwoot.timeoutMs;
+  const baseUrl = options.baseUrl ?? env.chatwoot.baseUrl;
+  const lookup = options.lookup;
+  const fetchImpl = options.fetchImpl ?? fetch;
 
-  const run = async (headers: Record<string, string>): Promise<Response> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await fetch(fileUrl, { headers, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const fetchOnce = (url: string, headers: Record<string, string>): Promise<Response> =>
+    fetchImpl(url, { headers, redirect: "manual", signal: controller.signal });
+
+  const runRedirects = async (
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<{ res: Response; finalUrl: string }> => {
+    let current = url;
+    for (let hop = 0; hop <= MAX_ATTACHMENT_REDIRECTS; hop++) {
+      const safety = await isSafeDownloadUrl(current, baseUrl, { lookup });
+      if (safety !== true) {
+        throw new Error(`[chatwoot-client] URL de adjunto no permitida (${current}): ${safety}`);
+      }
+      const res = await fetchOnce(current, headers);
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        if (!location) {
+          throw new ChatwootApiError(
+            res.status,
+            `Error descargando adjunto: redirect sin Location (${current})`,
+          );
+        }
+        let next: string;
+        try {
+          next = new URL(location, current).href;
+        } catch {
+          throw new Error(`[chatwoot-client] Location de redirect inválida (${location})`);
+        }
+        const nextSafety = await isSafeDownloadUrl(next, baseUrl, { lookup });
+        if (nextSafety !== true) {
+          controller.abort();
+          throw new Error(`[chatwoot-client] redirect de adjunto bloqueado por seguridad (${next}): ${nextSafety}`);
+        }
+        current = next;
+        continue;
+      }
+      return { res, finalUrl: current };
     }
+    controller.abort();
+    throw new Error(
+      `[chatwoot-client] adjunto excede el máximo de ${MAX_ATTACHMENT_REDIRECTS} saltos de redirect`,
+    );
   };
 
-  let res = await run({});
-  if (!res.ok && (res.status === 401 || res.status === 403)) {
-    console.warn("[chatwoot-client] file_url pidió auth, reintentando con api_access_token (REQUIERE VERIFICACIÓN EN CHATWOOT)");
-    res = await run({ api_access_token: env.chatwoot.apiToken });
-  }
+  try {
+    let { res, finalUrl } = await runRedirects(fileUrl, {});
 
-  if (!res.ok) {
-    throw new ChatwootApiError(res.status, `Error descargando adjunto ${fileUrl}: HTTP ${res.status}`);
-  }
+    // Retry con `api_access_token` SOLO si la URL final es same-origin con
+    // Chatwoot. Nunca se reenvía el token a otro host.
+    if (!res.ok && (res.status === 401 || res.status === 403)) {
+      if (baseUrl && sameOrigin(finalUrl, baseUrl)) {
+        console.warn(
+          "[chatwoot-client] file_url pidió auth, reintentando con api_access_token SOLO same-origin",
+        );
+        const retry = await fetchOnce(finalUrl, { api_access_token: env.chatwoot.apiToken });
+        if (retry.status >= 300 && retry.status < 400) {
+          controller.abort();
+          throw new Error(
+            "[chatwoot-client] redirect durante retry autenticado no permitido (el api_access_token NO se reenvía a otro host)",
+          );
+        }
+        res = retry;
+      } else {
+        console.warn(
+          "[chatwoot-client] 401/403 sin retry con token: la URL final NO es same-origin con Chatwoot",
+        );
+      }
+    }
 
-  const arrayBuffer = await res.arrayBuffer();
-  const mimeType = res.headers.get("content-type") ?? "application/octet-stream";
-  return { buffer: Buffer.from(arrayBuffer), mimeType };
+    if (!res.ok) {
+      throw new ChatwootApiError(
+        res.status,
+        `Error descargando adjunto ${fileUrl}: HTTP ${res.status}`,
+      );
+    }
+
+    // (a) Rechazo temprano por cabecera Content-Length.
+    const contentLength = res.headers.get("content-length");
+    if (contentLength) {
+      const parsed = Number(contentLength);
+      if (Number.isFinite(parsed) && parsed > maxBytes) {
+        controller.abort();
+        throw new Error(
+          `[chatwoot-client] adjunto ${fileUrl} excede el tope de ${maxBytes} bytes (Content-Length=${contentLength}): se rechaza sin leer el body`,
+        );
+      }
+    }
+
+    // (b) Lectura por stream con corte en `maxBytes + 1` y abort si excede.
+    const mimeType = res.headers.get("content-type") ?? "application/octet-stream";
+    const buffer = await readBodyCapped(res.body, maxBytes, fileUrl, controller);
+    return { buffer, mimeType };
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -157,3 +157,32 @@ test("L11. extractPhoneFromPayload: source_id raíz no numérico (BSUID) cae a m
   };
   assert.equal(extractPhoneFromPayload(payload as any), "51999888777");
 });
+
+// ── F5: saneamiento de la extensión de respaldo (path traversal) ───────────
+
+test("L12. extensión maliciosa '../../x' u otros caracteres → NO se concatena (fallback .bin)", () => {
+  assert.equal(mimeToExtension("application/octet-stream", "../../x"), ".bin");
+  assert.equal(mimeToExtension("application/octet-stream", "../../x.png"), ".bin");
+  assert.equal(mimeToExtension("application/octet-stream", "a b"), ".bin");
+  assert.equal(mimeToExtension("application/octet-stream", "<script>.html"), ".bin");
+  assert.equal(mimeToExtension("application/octet-stream", "..%2f..%2fetc"), ".bin");
+  // Mapa MIME intacto: la extensión maliciosa NO altera la ruta con mime conocido.
+  assert.equal(mimeToExtension("image/svg+xml", "../../x"), ".bin");
+  assert.equal(mimeToExtension("image/png", "../../x"), ".png");
+});
+
+test("L13. extensión de respaldo VÁLIDA (A-Za-z0-9 1-16 chars) se mantiene", () => {
+  assert.equal(mimeToExtension("application/octet-stream", "jpeg"), ".jpeg");
+  assert.equal(mimeToExtension("application/octet-stream", "JPG"), ".JPG");
+  assert.equal(mimeToExtension("application/octet-stream", ".png"), ".png"); // punto inicial se tolera
+  assert.equal(mimeToExtension("application/octet-stream", "wbmp1234567890"), ".wbmp1234567890");
+  assert.equal(mimeToExtension("application/octet-stream", "a".repeat(17)), ".bin"); // >16 → inválida
+  // buildAttachmentFilename hereda el saneamiento (sin path traversal).
+  assert.match(
+    buildAttachmentFilename("application/octet-stream", "../../x", {
+      now: 1726000000000,
+      uuid: "11111111-2222-3333-4444-555555555555",
+    }),
+    /^\d{13}_[0-9a-f-]{36}\.bin$/,
+  );
+});

@@ -181,10 +181,26 @@ const MIME_EXT_MAP: Record<string, string> = {
   "application/octet-stream": ".bin",
 };
 
+/**
+ * Allowlist de MIME CONFIABLES para servir/almacenar tal cual (F6): el
+ * content-type del servidor remoto fuera de esta lista NO se acepta sin sniff.
+ * Compartida entre processor (almacenado) y panel (Content-Disposition inline).
+ */
+export const TRUSTED_MIME_ALLOWLIST: ReadonlySet<string> = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+]);
+
 /** MIME → extensión (usa la extensión del adjunto como respaldo). */
 export function mimeToExtension(mimeType: string, fallbackExt?: string | null): string {
   const normalized = (mimeType ?? "").toLowerCase();
-  const fallback = fallbackExt ? `.${String(fallbackExt).replace(/^\./, "")}` : "";
+  // El fallback SIEMPRE se sanea: solo extensiones alfanuméricas 1-16 chars
+  // (F5). Cualquier otra (p.ej. path traversal "../../x") NO se concatena.
+  const rawExt = fallbackExt ? String(fallbackExt).replace(/^\./, "") : "";
+  const fallback = /^[A-Za-z0-9]{1,16}$/.test(rawExt) ? `.${rawExt}` : "";
   // application/octet-stream: mejor usar la extensión real del adjunto si viene.
   if (normalized === "application/octet-stream") return fallback || ".bin";
   const byMime = MIME_EXT_MAP[normalized];

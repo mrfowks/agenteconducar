@@ -90,7 +90,11 @@ export function resolveChangedValue(value: unknown): number | null {
  *
  * Tolerancias legacy (se conservan sin romper el caso documentado):
  *   - `[{ assignee_id: 88 }]` (número directo) → `{ current_value: 88 }`.
+ *   - `[{ assignee_id: "88" }]` (string numérico) → `{ current_value: 88 }`.
+ *   - `[{ assignee_id: null }]` → desasignación → `{ current_value: null }`.
  *   - `{ assignee_id: [previo, nuevo] }` (Record) → `{ current_value: último }`.
+ * `assignee_id: undefined` (clave presente con valor undefined) también se
+ * trata como desasignación; si la clave NO está en la entrada, se ignora.
  */
 export function extractAssigneeChange(
   changedAttributes: unknown,
@@ -98,29 +102,50 @@ export function extractAssigneeChange(
   const entries = Array.isArray(changedAttributes) ? changedAttributes : [changedAttributes];
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
-    const assigneeId = (entry as Record<string, unknown>).assignee_id;
-    if (assigneeId === undefined) continue;
-    return parseAssigneeChange(assigneeId);
+    const record = entry as Record<string, unknown>;
+    if (!("assignee_id" in record)) continue;
+    return parseAssigneeChange(record.assignee_id);
   }
   return undefined;
+}
+
+/** "88" → 88, " 42 " → 42, undefined → null (desasignación); otro valor tal cual. */
+function normalizeCurrentValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return value;
 }
 
 function parseAssigneeChange(
   value: unknown,
 ): { previous_value?: unknown; current_value?: unknown } | undefined {
+  // Desasignación (null o undefined explícito) → current_value null → releaseBot.
+  if (value === null || value === undefined) return { current_value: null };
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const obj = value as { previous_value?: unknown; current_value?: unknown };
     if ("current_value" in obj) {
-      return { previous_value: obj.previous_value, current_value: obj.current_value };
+      const result: { previous_value?: unknown; current_value?: unknown } = {
+        current_value: normalizeCurrentValue(obj.current_value),
+      };
+      if (obj.previous_value !== undefined) result.previous_value = obj.previous_value;
+      return result;
     }
     return undefined;
   }
   if (Array.isArray(value)) {
     // Legacy [previo, nuevo] → current_value = último elemento.
-    return { previous_value: value[0], current_value: value[value.length - 1] };
+    const result: { previous_value?: unknown; current_value?: unknown } = {
+      current_value: normalizeCurrentValue(value[value.length - 1]),
+    };
+    if (value[0] !== undefined) result.previous_value = value[0];
+    return result;
   }
   if (typeof value === "number") {
     return { current_value: value };
+  }
+  if (typeof value === "string") {
+    const normalized = normalizeCurrentValue(value);
+    return typeof normalized === "number" ? { current_value: normalized } : undefined;
   }
   return undefined;
 }

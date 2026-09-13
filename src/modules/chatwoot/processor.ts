@@ -19,6 +19,7 @@ import {
   ChatwootMessagePayload,
   extractFromPayload,
   isHumanUserSender,
+  TRUSTED_MIME_ALLOWLIST,
   upsertMapping,
 } from "./mapper";
 import { downloadAttachment } from "./client";
@@ -83,7 +84,7 @@ export interface ResolveAttachmentDeps {
   /** Inyectable para tests; por defecto el cliente real. */
   downloadAttachment?: (
     fileUrl: string,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; maxBytes?: number },
   ) => Promise<{ buffer: Buffer; mimeType: string }>;
 }
 
@@ -97,10 +98,27 @@ function enforceAttachmentLimit(attachmentId: number, buffer: Buffer): Buffer {
 }
 
 /**
+ * Resolución VACÍO-AWARE de la URL del adjunto: si `file_url` es string NO vacío
+ * (tras trim) se usa; si no, `data_url` si es string NO vacío; si no, `undefined`.
+ * Sin esto, un `file_url: ""` anulaba un `data_url` válido.
+ */
+export function pickAttachmentUrl(attachment: ChatwootAttachment): string | undefined {
+  if (typeof attachment.file_url === "string" && attachment.file_url.trim().length > 0) {
+    return attachment.file_url;
+  }
+  if (typeof attachment.data_url === "string" && attachment.data_url.trim().length > 0) {
+    return attachment.data_url;
+  }
+  return undefined;
+}
+
+/**
  * Resuelve un adjunto a `{ buffer, mimeType }`:
- *   1. `file_url ?? data_url` que es una URL http(s) REAL (Active Storage en
- *      Chatwoot v4.17.1, redirect 301, posible auth vía `api_access_token`) →
- *      descarga con `downloadAttachment` y valida MAX_ATTACHMENT_BYTES.
+ *   1. `pickAttachmentUrl` (file_url/data_url vacío-aware) que es una URL
+ *      http(s) REAL (Active Storage en Chatwoot v4.17.1, redirect 301, posible
+ *      auth vía `api_access_token`) → descarga con `downloadAttachment` (que ya
+ *      aplica el tope de tamaño por stream + hardening SSRF) y `enforceAttachmentLimit`
+ *      como defensa extra.
  *   2. `data:` URI → `dataUrlToBuffer` (compatibilidad legacy).
  *   3. Cualquier otro formato → warning + `Buffer.alloc(0)` (rechazo seguro,
  *      NUNCA bytes basura).
@@ -110,7 +128,7 @@ export async function resolveAttachment(
   deps: ResolveAttachmentDeps = {},
 ): Promise<ResolvedAttachment> {
   const doDownload = deps.downloadAttachment ?? downloadAttachment;
-  const url = attachment.file_url ?? attachment.data_url;
+  const url = pickAttachmentUrl(attachment);
 
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {
     const dl = await doDownload(url, { timeoutMs: env.chatwoot.timeoutMs });
@@ -132,12 +150,15 @@ export async function resolveAttachment(
 }
 
 /**
- * MIME efectivo para almacenar: usa el content-type de la descarga salvo que
- * sea genérico (`application/octet-stream`), en cuyo caso cae a `sniffMimeType`
- * (detección por primeros bytes, delivery.ts) como respaldo.
+ * MIME efectivo para almacenar (F6): el `content-type` del servidor remoto NO se
+ * acepta tal cual salvo que esté en la allowlist confiable
+ * (TRUSTED_MIME_ALLOWLIST: image/jpeg|png|gif|webp, application/pdf). Cualquier
+ * otro valor cae a `sniffMimeType(buffer)` (detección por primeros bytes,
+ * delivery.ts); si el sniff no reconoce → application/octet-stream (se sirve
+ * como descarga, nunca como inline).
  */
 export function resolveStoredMimeType(dlMimeType: string, buffer: Buffer): string {
-  if (dlMimeType && dlMimeType !== "application/octet-stream") return dlMimeType;
+  if (dlMimeType && TRUSTED_MIME_ALLOWLIST.has(dlMimeType)) return dlMimeType;
   return delivery.sniffMimeType(buffer);
 }
 

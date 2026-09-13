@@ -322,3 +322,43 @@ test("HC11. humano asignado → muteBot invocado y el bot queda mudo (no respond
   // Comportamiento central: con el bot mudo, aunque un contacto normal escriba, NO responde.
   assert.equal(shouldRespondForBot(botActive, { id: 7, type: "contact" }, undefined), false);
 });
+
+// ── F3: assignee_id null/undefined → desasignación; string numérico → mute ──
+
+test("HC12. entrada del array con assignee_id:null → desasignación → releaseBot", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ assignee_id: null }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(released, ["51999988777"]);
+  assert.deepEqual(muted, []);
+  // A nivel de extractor puro también se trata como desasignación.
+  assert.deepEqual(extractAssigneeChange([{ assignee_id: null }]), { current_value: null });
+  assert.deepEqual(extractAssigneeChange([{ assignee_id: { current_value: undefined } }]), {
+    current_value: null,
+  });
+});
+
+test("HC13. current_value numérico como string ('88') → se normaliza a número → muteBot", async () => {
+  const { muted, released, handlers } = conversationEventHandlers();
+  await handleConversationEvent(
+    {
+      event: "conversation_updated",
+      changed_attributes: [{ assignee_id: { previous_value: null, current_value: "88" } }],
+      contact_inbox: { id: 3, contact_id: 42, inbox_id: 9, source_id: "51999988777" },
+    } as ChatwootMessagePayload,
+    handlers,
+  );
+  assert.deepEqual(muted, ["51999988777"]);
+  assert.deepEqual(released, []);
+  // Extractor puro: objeto con current_value string, y assignee_id string directo.
+  assert.deepEqual(extractAssigneeChange([{ assignee_id: { current_value: "88" } }]), {
+    current_value: 88,
+  });
+  assert.deepEqual(extractAssigneeChange([{ assignee_id: "88" }]), { current_value: 88 });
+});
