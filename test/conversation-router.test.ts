@@ -618,3 +618,288 @@ test("2B2-26. delivery no necesita bypass del anti-duplicado", () => {
   assert.notEqual(state1.phase, state2.phase);
   // Las respuestas serán diferentes porque el phase cambió
 });
+
+// ── Tests de primer contacto conversacional ─────────────────────
+
+test("CC1. primer contacto PRACTICA: no REPROMPT circuito sin explicar", async () => {
+  const { decideResponse } = await import("../src/agent/response-decider");
+  const { detectIntent } = await import("../src/agent/intent-engine");
+  const { extractSlots } = await import("../src/agent/slot-manager");
+
+  const intent = detectIntent("quiero practicar porque mi examen es el sábado", null);
+  const state = makeState({ activeIntent: intent.intent, messageCount: 1 });
+  const slots = extractSlots("quiero practicar porque mi examen es el sábado", intent.intent as any, state);
+
+  const rec = {
+    recommendation: null,
+    diagnosisNeeded: true,
+    diagnosisQuestions: ["¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)"],
+  };
+
+  const result = decideResponse({
+    state,
+    intent,
+    slots: {
+      extracted: slots.extracted,
+      updated: slots.updated,
+      missing: slots.missing,
+      isComplete: slots.isComplete,
+    },
+    recommendation: rec,
+    userText: "quiero practicar porque mi examen es el sábado",
+  });
+
+  // Debe REPROMPT con pregunta de diagnóstico, no con "¿circuito?"
+  assert.equal(result.type, "REPROMPT");
+  if (result.type === "REPROMPT") {
+    assert.ok(result.question.includes("categoría") || result.question.includes("categoría"));
+    assert.equal(result.question.includes("circuito"), false);
+  }
+});
+
+test("CC2. cliente pregunta '¿qué circuito hay?' → explicación clara", async () => {
+  const { buildResponse } = await import("../src/agent/response-builder");
+
+  const result = buildResponse({
+    action: { type: "REPROMPT", question: "¿En qué circuito prefieres?", slotName: "circuito" },
+    state: makeState({ messageCount: 2 }),
+    context: makeContext(),
+    recommendation: null,
+  });
+
+  // Debe incluir explicación de ambos circuitos
+  assert.ok(result.text.toLowerCase().includes("oficial"));
+  assert.ok(result.text.toLowerCase().includes("alternativo"));
+  assert.ok(result.text.toLowerCase().includes("examen"));
+});
+
+test("CC3. cliente ya dijo categoría → no pedir nuevamente", async () => {
+  const { decideResponse } = await import("../src/agent/response-decider");
+  const { detectIntent } = await import("../src/agent/intent-engine");
+  const { extractSlots } = await import("../src/agent/slot-manager");
+
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    messageCount: 3,
+    slots: { categoria: "A1" },
+  });
+
+  const intent = detectIntent("A1", "PRACTICA");
+  const slots = extractSlots("A1", "PRACTICA", state);
+
+  const result = decideResponse({
+    state,
+    intent,
+    slots: {
+      extracted: slots.extracted,
+      updated: { ...state.slots, ...slots.updated },
+      missing: slots.missing.filter((s: any) => s.name !== "categoria"),
+      isComplete: false,
+    },
+    recommendation: { recommendation: null, diagnosisNeeded: false, diagnosisQuestions: [] },
+    userText: "A1",
+  });
+
+  // No debe volver a pedir categoría
+  if (result.type === "REPROMPT") {
+    assert.equal(result.question.includes("categoría"), false);
+  }
+});
+
+test("CC4. fecha de práctica no se confunde con examen_fecha", async () => {
+  const { extractSlots } = await import("../src/agent/slot-manager");
+
+  const state = makeState({ activeIntent: "PRACTICA" });
+  const result = extractSlots("quiero practicar el viernes", "PRACTICA", state);
+
+  // "viernes" debe ser fecha de práctica, no examen_fecha
+  assert.equal(result.updated.fecha, "viernes");
+  // examen_fecha no debe existir (no dijo "mi examen es el viernes")
+  assert.equal(result.updated.examen_fecha, undefined);
+});
+
+test("CC5. circuito NO se asigna silenciosamente como 'oficial'", async () => {
+  const { extractSlots } = await import("../src/agent/slot-manager");
+
+  const state = makeState({ activeIntent: "PRACTICA" });
+  const result = extractSlots("quiero practicar", "PRACTICA", state);
+
+  // circuito no debe tener valor si el usuario no lo especificó
+  assert.equal(result.updated.circuito, undefined);
+});
+
+test("CC6. primer contacto con categoría ya dicha → avanza al siguiente dato", async () => {
+  const { decideResponse } = await import("../src/agent/response-decider");
+
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    messageCount: 2,
+    slots: { categoria: "A1" },
+  });
+
+  const result = decideResponse({
+    state,
+    intent: { intent: "PRACTICA", confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "A1" },
+    slots: {
+      extracted: { categoria: "A1" },
+      updated: { categoria: "A1" },
+      missing: [
+        { name: "circuito", question: "¿Circuito?", type: "enum" as const, required: true, enum: ["oficial", "alternativo"] },
+        { name: "fecha", question: "¿Fecha?", type: "date" as const, required: true },
+        { name: "hora", question: "¿Hora?", type: "time" as const, required: true },
+      ],
+      isComplete: false,
+    },
+    recommendation: { recommendation: null, diagnosisNeeded: false, diagnosisQuestions: [] },
+    userText: "A1",
+  });
+
+  // Debe preguntar por circuito (siguiente en prioridad) pero con contexto
+  assert.equal(result.type, "REPROMPT");
+  if (result.type === "REPROMPT") {
+    assert.equal(result.slotName, "circuito");
+  }
+});
+
+// ── Tests de recomendación contextual sin slots completos ──────
+
+test("CC7. primer contacto + examen cercano → RECOMMEND contextual", () => {
+  const { decideResponse } = require("../src/agent/response-decider");
+
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    phase: "GATHERING" as const,
+    messageCount: 2,
+    slots: { categoria: "A1", examen_fecha: "sabado" },
+  });
+
+  const result = decideResponse({
+    state,
+    intent: { intent: "PRACTICA", confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "A1" },
+    slots: {
+      extracted: { categoria: "A1" },
+      updated: { categoria: "A1", examen_fecha: "sabado" },
+      missing: [
+        { name: "circuito", question: "¿Circuito?", type: "enum" as const, required: true, enum: ["oficial", "alternativo"] },
+        { name: "fecha", question: "¿Fecha?", type: "date" as const, required: true },
+        { name: "hora", question: "¿Hora?", type: "time" as const, required: true },
+      ],
+      isComplete: false,
+    },
+    recommendation: {
+      recommendation: {
+        type: "CONTEXTUAL_SIMULACRO",
+        target: "SIMULACRO",
+        reason: "test",
+        confidence: 0.85,
+        supportingFacts: [],
+        alternatives: [],
+        estimatedValue: { price: 60, savings: null, separateTotal: null },
+        requiresConfirmation: true,
+      },
+      diagnosisNeeded: false,
+      diagnosisQuestions: [],
+    },
+    userText: "A1",
+  });
+
+  // Debe ser RECOMMEND, no REPROMPT por circuito
+  assert.equal(result.type, "RECOMMEND");
+});
+
+test("CC8. A1 + examen cercano → recomendación, no selección de circuito", () => {
+  const { decideResponse } = require("../src/agent/response-decider");
+
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    phase: "GATHERING" as const,
+    messageCount: 3,
+    slots: { categoria: "A1", examen_fecha: "sabado" },
+  });
+
+  const result = decideResponse({
+    state,
+    intent: { intent: "PRACTICA", confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "" },
+    slots: {
+      extracted: {},
+      updated: { categoria: "A1", examen_fecha: "sabado" },
+      missing: [
+        { name: "circuito", question: "¿Circuito?", type: "enum" as const, required: true, enum: ["oficial", "alternativo"] },
+        { name: "fecha", question: "¿Fecha?", type: "date" as const, required: true },
+        { name: "hora", question: "¿Hora?", type: "time" as const, required: true },
+      ],
+      isComplete: false,
+    },
+    recommendation: {
+      recommendation: {
+        type: "CONTEXTUAL_SIMULACRO",
+        target: "SIMULACRO",
+        reason: "test",
+        confidence: 0.85,
+        supportingFacts: [],
+        alternatives: [],
+        estimatedValue: { price: 60, savings: null, separateTotal: null },
+        requiresConfirmation: true,
+      },
+      diagnosisNeeded: false,
+      diagnosisQuestions: [],
+    },
+    userText: "",
+  });
+
+  // Debe ser RECOMMEND, no preguntar circuito
+  assert.equal(result.type, "RECOMMEND");
+  if (result.type === "RECOMMEND") {
+    assert.equal(result.recommendation.type, "CONTEXTUAL_SIMULACRO");
+  }
+});
+
+test("CC9. pregunta explícita '¿qué circuitos tienen?' → explicación", () => {
+  const { buildResponse } = require("../src/agent/response-builder");
+
+  const result = buildResponse({
+    action: { type: "REPROMPT", question: "¿En qué circuito prefieres?", slotName: "circuito" },
+    state: makeState({ messageCount: 2 }),
+    context: makeContext(),
+    recommendation: null,
+  });
+
+  // Debe incluir explicación de ambos circuitos (primer contacto)
+  assert.ok(result.text.toLowerCase().includes("oficial"));
+  assert.ok(result.text.toLowerCase().includes("alternativo"));
+});
+
+test("CC10. circuito solo se solicita cuando es necesario", () => {
+  const { decideResponse } = require("../src/agent/response-decider");
+
+  // Sin recomendación contextual → debe preguntar circuito
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    phase: "GATHERING" as const,
+    messageCount: 4,
+    slots: { categoria: "A1" },
+  });
+
+  const result = decideResponse({
+    state,
+    intent: { intent: "PRACTICA", confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "" },
+    slots: {
+      extracted: {},
+      updated: { categoria: "A1" },
+      missing: [
+        { name: "circuito", question: "¿Circuito?", type: "enum" as const, required: true, enum: ["oficial", "alternativo"] },
+        { name: "fecha", question: "¿Fecha?", type: "date" as const, required: true },
+        { name: "hora", question: "¿Hora?", type: "time" as const, required: true },
+      ],
+      isComplete: false,
+    },
+    recommendation: { recommendation: null, diagnosisNeeded: false, diagnosisQuestions: [] },
+    userText: "",
+  });
+
+  // Sin recomendación contextual → debe preguntar por prioridad (circuito)
+  assert.equal(result.type, "REPROMPT");
+  if (result.type === "REPROMPT") {
+    assert.equal(result.slotName, "circuito");
+  }
+});

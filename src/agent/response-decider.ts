@@ -77,8 +77,20 @@ export function decideResponse(input: ResponseDeciderInput): ResponseAction {
     return { type: "HANDOFF", reason: gate.blockReason ?? "Derivación a asesor" };
   }
 
-  // 7. Si hay recomendación y el gate indica que los slots están completos
-  //    (respeta la transición GATHERING → CONFIRMING del ConfirmationGate)
+  // 7. Si hay recomendación contextual (no requiere todos los slots)
+  //    Ej: CONTEXTUAL_SIMULACRO cuando el examen está cerca
+  if (
+    recommendation?.recommendation &&
+    isContextualRecommendation(recommendation.recommendation.type) &&
+    state.phase === "GATHERING"
+  ) {
+    return {
+      type: "RECOMMEND",
+      recommendation: recommendation.recommendation,
+    };
+  }
+
+  // 7.5. Si hay recomendación operacional y los slots están completos
   if (recommendation?.recommendation && gate.action === "ASK_CONFIRM" && state.phase === "GATHERING") {
     return {
       type: "RECOMMEND",
@@ -118,14 +130,57 @@ export function decideResponse(input: ResponseDeciderInput): ResponseAction {
     };
   }
 
+  // 10.5. Primer contacto: respuesta orientativa en lugar de interrogatorio
+  // Si el usuario acaba de expresar su intención y el RecommendationEngine
+  // sugiere un diagnóstico, usar esa pregunta enriquecida en vez del slot genérico.
+  if (
+    slots.missing.length > 0 &&
+    recommendation?.diagnosisNeeded &&
+    recommendation.diagnosisQuestions.length > 0 &&
+    state.messageCount <= 2
+  ) {
+    return {
+      type: "REPROMPT",
+      question: recommendation.diagnosisQuestions[0],
+      slotName: "diagnostic",
+    };
+  }
+
+  // 10.6. Primer contacto con PRACTICA: no preguntar circuito sin explicar
+  if (
+    slots.missing.length > 0 &&
+    state.activeIntent === "PRACTICA" &&
+    state.messageCount <= 2 &&
+    !state.slots.categoria
+  ) {
+    // Priorizar categoría sobre circuito en primer contacto
+    const categoriaSlot = slots.missing.find((s) => s.name === "categoria");
+    if (categoriaSlot) {
+      return {
+        type: "REPROMPT",
+        question: "¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)",
+        slotName: "categoria",
+      };
+    }
+  }
+
   // 11. Slots faltantes → repreguntar (UNA pregunta a la vez, por prioridad)
+  //    Saltar circuito si hay recomendación contextual activa
   if (slots.missing.length > 0) {
-    // Ordenar por prioridad: categoria → circuito → fecha → hora
-    const sorted = [...slots.missing].sort(
-      (a, b) => (SLOT_PRIORITY[a.name] ?? 99) - (SLOT_PRIORITY[b.name] ?? 99),
-    );
-    const nextSlot = sorted[0];
-    return { type: "REPROMPT", question: nextSlot.question, slotName: nextSlot.name };
+    let missing = [...slots.missing];
+
+    // Si hay recomendación contextual, no preguntar circuito todavía
+    if (recommendation?.recommendation && isContextualRecommendation(recommendation.recommendation.type)) {
+      missing = missing.filter((s) => s.name !== "circuito");
+    }
+
+    if (missing.length > 0) {
+      const sorted = missing.sort(
+        (a, b) => (SLOT_PRIORITY[a.name] ?? 99) - (SLOT_PRIORITY[b.name] ?? 99),
+      );
+      const nextSlot = sorted[0];
+      return { type: "REPROMPT", question: nextSlot.question, slotName: nextSlot.name };
+    }
   }
 
   // 12. Respuesta directa
@@ -135,6 +190,14 @@ export function decideResponse(input: ResponseDeciderInput): ResponseAction {
 function isInformationUnavailable(slot: SlotDefinition): boolean {
   const unavailableTopics = ["examen_de_reglas", "requisitos_mtc", "estado_tramite"];
   return unavailableTopics.includes(slot.name);
+}
+
+/**
+ * Las recomendaciones contextuales no requieren todos los slots para activarse.
+ * Ej: CONTEXTUAL_SIMULACRO cuando el examen está cerca.
+ */
+function isContextualRecommendation(type: string): boolean {
+  return type === "CONTEXTUAL_SIMULACRO";
 }
 
 function getToolForIntent(intent: string | null): string {

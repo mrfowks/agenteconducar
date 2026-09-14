@@ -138,7 +138,7 @@ export function evaluateRecommendation(input: RecommendationInput): Recommendati
       recommendation: null,
       diagnosisNeeded: true,
       diagnosisQuestions: [
-        "¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)",
+        "¿Qué categoría de licencia necesitas? (A1 para auto, A2A para auto, A2B para camioneta, A3A para bus, A3B para camión, A3C para camión grande)",
       ],
     };
   }

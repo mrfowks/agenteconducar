@@ -89,28 +89,23 @@ function buildClarificationResponse(
 
 function buildRepromptResponse(
   question: string,
-  _slotName: string,
+  slotName: string,
   state: ConversationStateData,
   _context: ResolvedContext,
 ): ResponseBuilderOutput {
-  // Personalizar según slot faltante
   let text = question;
 
-  // Agregar contexto si ya hay datos recopilados
-  const collected = Object.entries(state.slots)
-    .filter(([_, v]) => v !== undefined && v !== null)
-    .map(([k, v]) => `${k}: ${v}`);
-
-  if (collected.length > 0 && state.repromptCount > 0) {
-    // Ya preguntamos antes: no repetir contexto completo
-    text = question;
+  // Primer contacto: agregar contexto explicativo cuando el slot requiere
+  // conocimiento que el cliente no tiene por qué tener
+  if (state.messageCount <= 2 && slotName === "circuito") {
+    text =
+      "Tenemos dos circuitos para practicar:\n" +
+      "• **Oficial**: donde se realiza el examen práctico\n" +
+      "• **Alternativo**: idéntico al oficial, solo para prácticas\n\n" +
+      question;
   }
 
-  return {
-    text,
-    includeRecommendation: false,
-    salesFollowUp: false,
-  };
+  return { text, includeRecommendation: false, salesFollowUp: false };
 }
 
 function buildRecommendationResponse(
@@ -134,7 +129,7 @@ function buildRecommendationResponse(
       break;
 
     case "CONTEXTUAL_SIMULACRO":
-      text = buildSimulacroRecommendation(recommendation);
+      text = buildSimulacroRecommendation(recommendation, state);
       break;
 
     case "VEHICLE":
@@ -179,8 +174,13 @@ function buildPackageRecommendation(rec: Recommendation, _state: ConversationSta
   return parts.join("\n");
 }
 
-function buildSimulacroRecommendation(rec: Recommendation): string {
+function buildSimulacroRecommendation(rec: Recommendation, state?: ConversationStateData): string {
   const parts: string[] = [];
+
+  // Contexto: si el usuario mencionó examen, orientar
+  if (state?.slots?.examen_fecha) {
+    parts.push(`Como tu examen es pronto, te conviene prepararte bien.`);
+  }
 
   parts.push(rec.reason);
 
@@ -193,7 +193,12 @@ function buildSimulacroRecommendation(rec: Recommendation): string {
   parts.push("👨‍🏫 Incluye instructor profesional.");
   parts.push("⏱️ Duración: 20 minutos.");
 
-  parts.push("\n¿Te gustaría reservar un simulacro?");
+  // Contexto de circuitos
+  parts.push("\nTenemos dos circuitos para practicar:");
+  parts.push("• **Oficial**: donde se realiza el examen práctico");
+  parts.push("• **Alternativo**: idéntico al oficial, solo para prácticas");
+
+  parts.push("\n¿Te gustaría reservar un simulacro o prefieres una práctica primero?");
 
   return parts.join("\n");
 }
