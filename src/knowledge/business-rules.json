@@ -7,48 +7,162 @@
     "examen_practico": {
       "se_realiza": true,
       "nota": "Se realiza para obtención de licencia",
-      "circuito": "Se realiza en el circuito oficial"
+      "dias": ["martes", "jueves", "sábado"],
+      "horario": "08:00-16:30",
+      "circuito": "oficial"
     }
   },
   "simulacro": {
-    "descripcion": "Simulacro de examen práctico",
-    "circuito": "Se realiza en el circuito donde se realiza el examen práctico",
-    "duracion_min": 20
+    "descripcion": "Simulacro de examen práctico de manejo",
+    "dias": ["martes", "jueves", "sábado"],
+    "horario": "05:30-07:30",
+    "circuito": "oficial",
+    "duracion_min": 20,
+    "incluye_instructor": true,
+    "nota": "Solo tiene sentido como preparación para el examen práctico"
   },
   "practica": {
-    "descripcion": "Práctica de manejo con instructor",
+    "descripcion": "Práctica de manejo con instructor profesional",
+    "dias": "lunes a domingo, incluidos feriados",
+    "horario": "08:00-17:30",
+    "duracion_min": 30,
     "con_instructor": true,
     "circuitos": {
       "oficial": "Pista oficial",
       "alternativo": "Circuito alterno (copia idéntica del circuito oficial)"
     },
-    "duracion_min": 30
+    "nota": "En días de examen, si la pista oficial está ocupada, la práctica puede realizarse en circuito alterno"
   },
   "precios": {
-    "A1": 60,
-    "A2A": 60,
-    "A2B": 70,
-    "A3A": 100,
-    "A3B": 100,
-    "A3C": 100
+    "A1": {
+      "practica": 60,
+      "simulacro_individual": 60,
+      "alquiler_vehiculo_examen": 60
+    },
+    "A2A": { "practica": 60 },
+    "A2B": { "practica": 70 },
+    "A3A": { "practica": 100 },
+    "A3B": { "practica": 100 },
+    "A3C": { "practica": 100 }
+  },
+  "paquetes": {
+    "disponibles_solo_A1": true,
+    "P1": {
+      "nombre": "Paquete 1",
+      "precio": 680,
+      "orientacion": "Personas que empiezan desde cero y quieren resolver el proceso de forma integral",
+      "incluye": [
+        "examen_médico",
+        "pagos_derechos",
+        "derecho_examen_reglas",
+        "derecho_examen_práctico",
+        "derecho_expedición_licencia",
+        "balotario_desarrollado",
+        "prácticas_45min_circuito_alternativo",
+        "alquiler_vehículo_examen",
+        "5_prácticas_30min_circuito_oficial",
+        "1_vuelta_gratis_simulacro"
+      ],
+      "argumento": "Acompañamiento, facilidad, no organizar cada trámite por separado, Conducar orienta el itinerario"
+    },
+    "P2": {
+      "nombre": "Paquete 2",
+      "precio": 160,
+      "orientacion": "Personas que ya saben manejar y quieren reforzar antes del examen",
+      "incluye": [
+        "2_prácticas_30min_circuito_oficial",
+        "alquiler_vehículo_examen",
+        "instructor_profesional"
+      ],
+      "precio_separado": 180,
+      "ahorro": 20,
+      "argumento": "2 prácticas de 30 min = 1 hora en circuito oficial + alquiler vehículo"
+    },
+    "P3": {
+      "nombre": "Paquete 3",
+      "precio": 360,
+      "orientacion": "Personas que quieren practicar bastante",
+      "incluye": [
+        "2_prácticas_45min_circuito_alternativo",
+        "4_prácticas_30min_circuito_oficial",
+        "alquiler_vehículo_examen",
+        "instructor_profesional"
+      ],
+      "argumento": "Preparación intensiva + práctica en alterno + práctica en oficial + vehículo"
+    },
+    "P4": {
+      "nombre": "Paquete 4",
+      "precio": null,
+      "orientacion": "Información no confirmada completamente",
+      "nota": "Utilizar exclusivamente información confirmada. No inventar contenido ni precio."
+    },
+    "P5": {
+      "nombre": "Paquete 5",
+      "precio": 260,
+      "orientacion": "Práctica + simulacro",
+      "incluye": [
+        "3_prácticas_30min_circuito_oficial",
+        "alquiler_vehículo_examen",
+        "1_vuelta_gratis_simulacro"
+      ],
+      "nota_simulacro": "La vuelta de simulacro corresponde a la franja 5:30-7:30 AM en días de examen"
+    }
   },
   "horarios": {
-    "practica_oficial": { "dias": "Lun,Mié,Vie,Dom", "inicio": "08:00", "fin": "17:30" },
+    "practica_oficial": { "dias": "Lun-Dom (incluye feriados)", "inicio": "08:00", "fin": "17:30" },
     "simulacro_oficial": { "dias": "Mar,Jue,Sáb", "inicio": "05:30", "fin": "07:30" },
-    "examenes": { "dias": "Mar,Jue,Sáb", "inicio": "08:00", "fin": "16:00" },
-    "practica_alternativo": { "dias": "Todos", "inicio": "08:00", "fin": "17:30" }
+    "examenes_practicos": { "dias": "Mar,Jue,Sáb", "inicio": "08:00", "fin": "16:30" },
+    "practica_alternativo": { "dias": "Lun-Dom (incluye feriados)", "inicio": "08:00", "fin": "17:30" }
   },
   "pagos": {
     "metodos": ["efectivo", "Yape", "Plin", "tarjeta débito/crédito"],
     "recargo_tarjeta": "5%",
-    "nota": "Se comparte QR, se paga por Yape o Plin, se envía comprobante"
+    "nota": "Se comparte QR, se paga por Yape o Plin, se envía comprobante",
+    "validacion_fuera_horario": "Hemos recibido tu comprobante. En este momento estamos fuera de nuestro horario de atención para validar el pago, pero lo revisaremos a primera hora."
   },
   "categorias": {
-    "A1": { "vehiculo": "auto", "precio": 60 },
-    "A2A": { "vehiculo": "auto", "precio": 60 },
-    "A2B": { "vehiculo": "camioneta/van", "precio": 70 },
-    "A3A": { "vehiculo": "ómnibus/bus", "precio": 100 },
-    "A3B": { "vehiculo": "camión", "precio": 100 },
-    "A3C": { "vehiculo": "camión", "precio": 100 }
+    "A1": { "vehiculo": "auto", "precio_practica": 60 },
+    "A2A": { "vehiculo": "auto", "precio_practica": 60 },
+    "A2B": { "vehiculo": "camioneta/van", "precio_practica": 70 },
+    "A3A": { "vehiculo": "ómnibus/bus", "precio_practica": 100 },
+    "A3B": { "vehiculo": "camión", "precio_practica": 100 },
+    "A3C": { "vehiculo": "camión", "precio_practica": 100 }
+  },
+  "vehiculos": {
+    "A1": {
+      "modelo": "Kia Picanto 2026",
+      "tipo": "automático",
+      "nota": "Opción mecánica también disponible. Recomendación preferente: automático para facilitar conducción.",
+      "mecanica": true
+    },
+    "A2A": {
+      "tipo": "auto",
+      "nota": "Información de modelo no confirmada"
+    },
+    "A2B": {
+      "tipo": "minivan",
+      "mecanica": true,
+      "nota": "Vehículo mecánico"
+    },
+    "A3A": {
+      "modelo": "Cusco",
+      "mecanica": true,
+      "nota": "Vehículo mecánico"
+    },
+    "A3B": {
+      "tipo": "no_confirmado",
+      "nota": "Dato aún NO confirmado. NO inventar vehículo."
+    },
+    "A3C": {
+      "modelo": "Hyundai 0 km",
+      "tipo": "camión",
+      "mecanica": true,
+      "nota": "Mecánico, prácticas y examen con este vehículo"
+    }
+  },
+  "servicios_no_ofrecidos": {
+    "motos": "Conducar no realiza trámites/exámenes para motos o mototaxis",
+    "revalidacion": "Conducar NO realiza la revalidación de brevete. Se realiza ante las entidades correspondientes.",
+    "examen_reglas": "No se realiza en Conducar"
   }
 }

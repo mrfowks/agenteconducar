@@ -6,7 +6,7 @@ import type {
   SlotDefinition,
 } from "./types";
 
-const MAX_REPROMPTS = 2;
+const MAX_REPROMPTS = 3;
 
 /**
  * Decide qué hacer: responder, repreguntar, confirmar, ejecutar herramienta o hacer handoff.

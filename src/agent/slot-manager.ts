@@ -99,17 +99,36 @@ function extractDateValue(text: string, _slot: SlotDefinition): string | null {
 }
 
 function extractTimeValue(text: string, _slot: SlotDefinition): string | null {
-  // Formato "a las 6", "a las 10:30", "6am", "14:00"
-  const timePatterns = [
-    /a\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i,
-    /(\d{1,2}):(\d{2})\s*(am|pm)?/i,
-    /(\d{1,2})\s*(am|pm)/i,
+  // "a las 10" → "10:00"
+  // "10 am" → "10:00"
+  // "10:30 am" → "10:30"
+  // "10 pm" → "22:00"
+  // "10:30 pm" → "22:30"
+  // "22:00" → "22:00"
+
+  const patterns = [
+    { regex: /a\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(?:de\s+la\s+mañana|am)?/i, handler: (m: RegExpMatchArray) => normalizeTime(m[1], m[2], false) },
+    { regex: /a\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(?:de\s+la\s+tarde|pm)/i, handler: (m: RegExpMatchArray) => normalizeTime(m[1], m[2], true) },
+    { regex: /(\d{1,2}):(\d{2})\s*(am|pm)/i, handler: (m: RegExpMatchArray) => normalizeTime(m[1], m[2], m[3].toLowerCase() === 'pm') },
+    { regex: /(\d{1,2})\s*(am|pm)/i, handler: (m: RegExpMatchArray) => normalizeTime(m[1], undefined, m[2].toLowerCase() === 'pm') },
+    { regex: /(\d{1,2}):(\d{2})/i, handler: (m: RegExpMatchArray) => normalizeTime(m[1], m[2], false) },
   ];
-  for (const pattern of timePatterns) {
-    const match = pattern.exec(text);
-    if (match) return match[0];
+
+  for (const { regex, handler } of patterns) {
+    const match = regex.exec(text);
+    if (match) return handler(match);
   }
   return null;
+}
+
+function normalizeTime(hourStr: string, minStr?: string, isPm?: boolean): string {
+  let h = parseInt(hourStr, 10);
+  const m = minStr ? parseInt(minStr, 10) : 0;
+
+  if (isPm && h < 12) h += 12;
+  if (!isPm && h === 12) h = 0; // 12 AM = 00:00
+
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 function extractNumberValue(text: string, _slot: SlotDefinition): number | null {
