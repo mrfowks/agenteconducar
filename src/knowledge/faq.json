@@ -1,0 +1,14 @@
+{
+  "donde_estamos": {
+    "pregunta": "¿Dónde se ubican?",
+    "respuesta": "Conducar está ubicado en Ventanilla. El circuito alterno es una copia idéntica del circuito oficial."
+  },
+  "que_necesito": {
+    "pregunta": "¿Qué necesito para practicar?",
+    "respuesta": "Solo necesitas reservar tu práctica y pagar previamente. Se comparte un código QR para pago por Yape o Plin."
+  },
+  "como_reservar": {
+    "pregunta": "¿Cómo puedo reservar?",
+    "respuesta": "Dime la categoría, circuito, día y hora que prefieres. Te verifico disponibilidad y registro tu reserva."
+  }
+}

@@ -216,3 +216,57 @@ model Message {
   @@index([phone])
   @@index([createdAt])
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// FASE 2: Estado conversacional para arquitectura con intención/slots
+// ═══════════════════════════════════════════════════════════════════
+
+enum Intent {
+  ALQUILER_EXAMEN
+  SIMULACRO
+  PRACTICA
+  PAQUETE
+  HORARIOS
+  RESERVA
+  PAGO
+  HANDOFF
+  OTROS
+}
+
+enum ConversationPhase {
+  IDLE
+  GATHERING
+  CONFIRMING
+  EXECUTING
+  POST_ACTION
+  HANDOFF
+}
+
+model ConversationState {
+  id                      Int               @id @default(autoincrement())
+  chatwootConversationId  Int?              @unique
+  phone                   String?
+  chatwootContactId       Int?
+  sourceId                String?
+  activeIntent            Intent?
+  intentConfidence        Float?
+  previousIntent          Intent?
+  intentChangedAt         DateTime?
+  phase                   ConversationPhase @default(IDLE)
+  slots                   Json              @default("{}")
+  repromptCount           Int               @default(0)
+  lastQuestionAsked       String?
+  lastToolCalled          String?
+  lastResponseHash        String?
+  messageCount            Int               @default(0)
+  startedAt               DateTime          @default(now())
+  lastActivityAt          DateTime          @updatedAt
+  expiresAt               DateTime?
+
+  @@index([phone])
+  @@index([chatwootConversationId])
+  @@index([chatwootContactId])
+  @@index([activeIntent])
+  @@index([phase])
+  @@index([expiresAt])
+}

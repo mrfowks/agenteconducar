@@ -1,0 +1,10 @@
+{
+  "RESERVA": ["cita", "reservar", "reserva", "agendar", "agenda", "turno", "sacar cita"],
+  "ALQUILER_EXAMEN": ["alquiler", "alquilar", "vehículo para examen", "carro para examen", "auto para examen"],
+  "SIMULACRO": ["simulacro", "simulación", "prueba de examen"],
+  "PRACTICA": ["práctica", "practicar", "manejar", "conducir", "clase"],
+  "PAQUETE": ["paquete", "paquetes", "todo incluido", "promoción", "promo"],
+  "HORARIOS": ["horario", "horarios", "atención", "atienden", "abierto", "cierran"],
+  "PAGO": ["pagar", "pago", "yape", "plin", "transferencia", "comprobante", "qr"],
+  "HANDOFF": ["asesor", "humano", "persona", "hablar con alguien", "ayuda humana"]
+}

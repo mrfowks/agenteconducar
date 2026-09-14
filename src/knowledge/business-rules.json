@@ -1,0 +1,54 @@
+{
+  "examenes": {
+    "examen_de_reglas": {
+      "se_realiza": false,
+      "nota": "No se realiza en Conducar"
+    },
+    "examen_practico": {
+      "se_realiza": true,
+      "nota": "Se realiza para obtención de licencia",
+      "circuito": "Se realiza en el circuito oficial"
+    }
+  },
+  "simulacro": {
+    "descripcion": "Simulacro de examen práctico",
+    "circuito": "Se realiza en el circuito donde se realiza el examen práctico",
+    "duracion_min": 20
+  },
+  "practica": {
+    "descripcion": "Práctica de manejo con instructor",
+    "con_instructor": true,
+    "circuitos": {
+      "oficial": "Pista oficial",
+      "alternativo": "Circuito alterno (copia idéntica del circuito oficial)"
+    },
+    "duracion_min": 30
+  },
+  "precios": {
+    "A1": 60,
+    "A2A": 60,
+    "A2B": 70,
+    "A3A": 100,
+    "A3B": 100,
+    "A3C": 100
+  },
+  "horarios": {
+    "practica_oficial": { "dias": "Lun,Mié,Vie,Dom", "inicio": "08:00", "fin": "17:30" },
+    "simulacro_oficial": { "dias": "Mar,Jue,Sáb", "inicio": "05:30", "fin": "07:30" },
+    "examenes": { "dias": "Mar,Jue,Sáb", "inicio": "08:00", "fin": "16:00" },
+    "practica_alternativo": { "dias": "Todos", "inicio": "08:00", "fin": "17:30" }
+  },
+  "pagos": {
+    "metodos": ["efectivo", "Yape", "Plin", "tarjeta débito/crédito"],
+    "recargo_tarjeta": "5%",
+    "nota": "Se comparte QR, se paga por Yape o Plin, se envía comprobante"
+  },
+  "categorias": {
+    "A1": { "vehiculo": "auto", "precio": 60 },
+    "A2A": { "vehiculo": "auto", "precio": 60 },
+    "A2B": { "vehiculo": "camioneta/van", "precio": 70 },
+    "A3A": { "vehiculo": "ómnibus/bus", "precio": 100 },
+    "A3B": { "vehiculo": "camión", "precio": 100 },
+    "A3C": { "vehiculo": "camión", "precio": 100 }
+  }
+}

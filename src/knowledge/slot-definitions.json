@@ -1,0 +1,143 @@
+{
+  "RESERVA": {
+    "requiredSlots": [
+      {
+        "name": "actividad",
+        "question": "¿Qué deseas reservar? ¿Una práctica de manejo o un simulacro de examen?",
+        "type": "enum",
+        "required": true,
+        "enum": ["practica", "simulacro"]
+      },
+      {
+        "name": "categoria",
+        "question": "¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)",
+        "type": "enum",
+        "required": true,
+        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+      },
+      {
+        "name": "circuito",
+        "question": "¿En qué circuito prefieres? ¿El oficial o el alternativo?",
+        "type": "enum",
+        "required": true,
+        "enum": ["oficial", "alternativo"]
+      },
+      {
+        "name": "fecha",
+        "question": "¿Qué día te conviene?",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "hora",
+        "question": "¿A qué hora prefieres?",
+        "type": "time",
+        "required": true
+      }
+    ],
+    "optionalSlots": []
+  },
+  "ALQUILER_EXAMEN": {
+    "requiredSlots": [
+      {
+        "name": "categoria",
+        "question": "¿Para qué categoría necesitas alquilar el vehículo?",
+        "type": "enum",
+        "required": true,
+        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+      },
+      {
+        "name": "fecha_examen",
+        "question": "¿Qué día es tu examen práctico?",
+        "type": "date",
+        "required": true
+      }
+    ],
+    "optionalSlots": []
+  },
+  "SIMULACRO": {
+    "requiredSlots": [
+      {
+        "name": "categoria",
+        "question": "¿Qué categoría de licencia necesitas?",
+        "type": "enum",
+        "required": true,
+        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+      },
+      {
+        "name": "circuito",
+        "question": "¿En qué circuito prefieres?",
+        "type": "enum",
+        "required": true,
+        "enum": ["oficial", "alternativo"]
+      },
+      {
+        "name": "fecha",
+        "question": "¿Qué día te conviene?",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "hora",
+        "question": "¿A qué hora prefieres?",
+        "type": "time",
+        "required": true
+      }
+    ],
+    "optionalSlots": []
+  },
+  "PRACTICA": {
+    "requiredSlots": [
+      {
+        "name": "categoria",
+        "question": "¿Qué categoría de licencia necesitas?",
+        "type": "enum",
+        "required": true,
+        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+      },
+      {
+        "name": "circuito",
+        "question": "¿En qué circuito prefieres?",
+        "type": "enum",
+        "required": true,
+        "enum": ["oficial", "alternativo"]
+      },
+      {
+        "name": "fecha",
+        "question": "¿Qué día te conviene?",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "hora",
+        "question": "¿A qué hora prefieres?",
+        "type": "time",
+        "required": true
+      }
+    ],
+    "optionalSlots": []
+  },
+  "PAQUETE": {
+    "requiredSlots": [
+      {
+        "name": "tipo_consulta",
+        "question": "¿Deseas ver todos los paquetes o tienes alguno en mente?",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "optionalSlots": []
+  },
+  "HORARIOS": {
+    "requiredSlots": [],
+    "optionalSlots": []
+  },
+  "PAGO": {
+    "requiredSlots": [],
+    "optionalSlots": []
+  },
+  "HANDOFF": {
+    "requiredSlots": [],
+    "optionalSlots": []
+  }
+}
