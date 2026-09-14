@@ -97,11 +97,21 @@ export async function processMessage(
   const activeIntent = state.activeIntent ?? intent.intent;
   const slotResult = extractSlots(text, activeIntent, state);
 
-  // 5. Actualizar slots en estado
+  // 5. Actualizar slots en estado y avanzar phase si corresponde
+  const { evaluateGate } = await import("./confirmation-gate");
+  const gateResult = evaluateGate({
+    phase: state.phase,
+    slotsComplete: slotResult.isComplete,
+    userText: text,
+    hasRecommendation: false, // Se evaluará después
+    hasPendingSideEffects: false,
+  });
+
   state = {
     ...state,
     slots: slotResult.updated,
     messageCount: state.messageCount + 1,
+    phase: gateResult.nextPhase, // ← Avanzar phase según el gate
   };
 
   // 6. Resolver contexto

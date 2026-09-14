@@ -31,6 +31,8 @@ export interface ConversationStateData {
   slots: Record<string, unknown>;
   repromptCount: number;
   lastQuestionAsked: string | null;
+  /** Tipo de la última recomendación ofrecida (para evitar repetición). */
+  lastRecommendationType?: string | null;
   messageCount: number;
   expiresAt: Date | null;
 }

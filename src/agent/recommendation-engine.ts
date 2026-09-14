@@ -150,7 +150,7 @@ export function evaluateRecommendation(input: RecommendationInput): Recommendati
   if (hasExamProximity(slots, state.slots, context.temporalContext.isExamDay)) {
     if (activeIntent === "PRACTICA" || activeIntent === "SIMULACRO") {
       // Verificar si ya tiene simulacro agendado
-      const hasSimulacroScheduled = state.slots.actividad === "simulacro";
+      const hasSimulacroScheduled = state.slots.actividad === "simulacro" || state.lastRecommendationType === "CONTEXTUAL_SIMULACRO";
 
       if (!hasSimulacroScheduled) {
         return {

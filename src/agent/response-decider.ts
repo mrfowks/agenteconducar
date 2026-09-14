@@ -77,8 +77,9 @@ export function decideResponse(input: ResponseDeciderInput): ResponseAction {
     return { type: "HANDOFF", reason: gate.blockReason ?? "Derivación a asesor" };
   }
 
-  // 7. Si hay recomendación y estamos en GATHERING con slots completos
-  if (recommendation?.recommendation && slots.isComplete && state.phase === "GATHERING") {
+  // 7. Si hay recomendación y el gate indica que los slots están completos
+  //    (respeta la transición GATHERING → CONFIRMING del ConfirmationGate)
+  if (recommendation?.recommendation && gate.action === "ASK_CONFIRM" && state.phase === "GATHERING") {
     return {
       type: "RECOMMEND",
       recommendation: recommendation.recommendation,

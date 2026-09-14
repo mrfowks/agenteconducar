@@ -124,6 +124,11 @@ export async function routeMessage(params: RouteGatewayParams): Promise<string> 
       userText: text,
     });
 
+    // 5. Persistir tipo de recomendación ofrecida
+    if (action.type === "RECOMMEND" && recommendation?.recommendation) {
+      result.state.lastRecommendationType = recommendation.recommendation.type;
+    }
+
     // 4. Construir respuesta
     const response = buildResponse({
       action,

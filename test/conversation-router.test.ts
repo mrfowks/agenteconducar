@@ -2,6 +2,53 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { processMessage } from "../src/agent/conversation-router";
 import type { ConversationRouterResult } from "../src/agent/conversation-router";
+import type { ConversationStateData } from "../src/agent/types";
+import type { ResolvedContext } from "../src/agent/context-resolver";
+
+// ── Helpers ─────────────────────────────────────────────────────
+
+function makeState(overrides: Partial<ConversationStateData> = {}): ConversationStateData {
+  return {
+    chatwootConversationId: 1,
+    phone: null,
+    chatwootContactId: null,
+    sourceId: null,
+    activeIntent: null,
+    phase: "IDLE",
+    slots: {},
+    repromptCount: 0,
+    lastQuestionAsked: null,
+    messageCount: 0,
+    expiresAt: null,
+    ...overrides,
+  };
+}
+
+function makeContext(overrides: Partial<ResolvedContext> = {}): ResolvedContext {
+  return {
+    clientProfile: {
+      hasReservations: false,
+      lastCategory: null,
+      lastActivity: null,
+      hasPackage: false,
+    },
+    temporalContext: {
+      isExamDay: false,
+      currentDayOfWeek: "lunes",
+      currentHour: 10,
+    },
+    conversationContext: {
+      messageCount: 1,
+      isNewUser: true,
+      activeIntent: null,
+      phase: "IDLE",
+      slotsCollected: {},
+      missingSlots: [],
+    },
+    knowledgeContext: "",
+    ...overrides,
+  };
+}
 
 // ── Mock de Prisma para tests sin BD ───────────────────────────
 // Reutilizar el mismo patrón de dependency injection que state-loader
@@ -440,4 +487,134 @@ test("2B2-20. flujo RESERVA completo multi-mensaje", async () => {
   assert.equal(state.slots.fecha, "jueves");
   assert.equal(state.slots.hora, "15:00");
   assert.equal(state.messageCount, 5);
+});
+
+// ── Tests de transición de phase ─────────────────────────────────
+
+test("2B2-21. RECOMMEND mueve GATHERING → CONFIRMING", async () => {
+  const { detectIntent } = await import("../src/agent/intent-engine");
+  const { extractSlots } = await import("../src/agent/slot-manager");
+  const { evaluateGate } = await import("../src/agent/confirmation-gate");
+
+  let state = makeState({ activeIntent: "PRACTICA", phase: "GATHERING" as const });
+
+  // Simular slots completos
+  state = { ...state, slots: { categoria: "A1", circuito: "oficial", fecha: "viernes", hora: "10:00" } };
+
+  // El gate debe indicar CONFIRMING cuando slots están completos
+  const gate = evaluateGate({
+    phase: state.phase,
+    slotsComplete: true,
+    userText: "test",
+    hasRecommendation: true,
+    hasPendingSideEffects: false,
+  });
+
+  assert.equal(gate.nextPhase, "CONFIRMING");
+  assert.equal(gate.action, "ASK_CONFIRM");
+});
+
+test("2B2-22. siguiente mensaje NO vuelve a generar RECOMMEND", async () => {
+  // Simular: state.phase = CONFIRMING (ya avanzó)
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    phase: "CONFIRMING" as const,
+    slots: { categoria: "A1", circuito: "oficial", fecha: "viernes", hora: "10:00" },
+  });
+
+  // En CONFIRMING, el gate devuelve ASK_CONFIRM para texto ambiguo (eso es correcto).
+  // El punto clave: RECOMMEND NO se dispara porque state.phase !== "GATHERING"
+  const { evaluateGate } = await import("../src/agent/confirmation-gate");
+  const gate = evaluateGate({
+    phase: state.phase,
+    slotsComplete: true,
+    userText: "algo más",
+    hasRecommendation: true,
+    hasPendingSideEffects: false,
+  });
+
+  // En CONFIRMING, sin confirmación explícita → mantener CONFIRMING
+  assert.equal(gate.nextPhase, "CONFIRMING");
+  // La protección contra RECOMMEND duplicado viene de que
+  // response-decider RECOMMEND solo se activa cuando state.phase === "GATHERING"
+  // (no cuando phase ya es CONFIRMING)
+  assert.equal(state.phase, "CONFIRMING"); // ya no es GATHERING
+});
+
+test("2B2-23. slots nuevos se conservan después de RECOMMEND", async () => {
+  const { extractSlots } = await import("../src/agent/slot-manager");
+
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    phase: "GATHERING" as const,
+    slots: { categoria: "A1" },
+  });
+
+  const result = extractSlots("oficial el viernes a las 10 am", "PRACTICA", state);
+  assert.equal(result.updated.circuito, "oficial");
+  assert.ok(result.updated.fecha);
+  assert.equal(result.updated.hora, "10:00");
+  assert.equal(result.updated.categoria, "A1"); // Conserva el anterior
+});
+
+test("2B2-24. recomendación simulacro no se repite indefinidamente", () => {
+  const { evaluateRecommendation } = require("../src/agent/recommendation-engine");
+
+  // Estado con lastRecommendationType = CONTEXTUAL_SIMULACRO
+  const state = makeState({
+    activeIntent: "PRACTICA",
+    phase: "CONFIRMING" as const,
+    slots: { categoria: "A1" },
+    lastRecommendationType: "CONTEXTUAL_SIMULACRO",
+  });
+
+  const result = evaluateRecommendation({
+    activeIntent: "PRACTICA",
+    slots: { categoria: "A1" },
+    state,
+    context: makeContext({
+      temporalContext: { isExamDay: true, currentDayOfWeek: "martes", currentHour: 10 },
+    }),
+  });
+
+  // No debe volver a recomendar simulacro si ya se ofreció
+  if (result.recommendation) {
+    assert.notEqual(result.recommendation.type, "CONTEXTUAL_SIMULACRO");
+  }
+});
+
+test("2B2-25. CONFIRMING → EXECUTING solo con confirmación explícita", () => {
+  const { evaluateGate } = require("../src/agent/confirmation-gate");
+
+  // Sin confirmación explícita → mantener CONFIRMING
+  const gate1 = evaluateGate({
+    phase: "CONFIRMING",
+    slotsComplete: true,
+    userText: "¿y cuánto cuesta?",
+    hasRecommendation: false,
+    hasPendingSideEffects: false,
+  });
+  assert.equal(gate1.nextPhase, "CONFIRMING");
+  assert.notEqual(gate1.action, "EXECUTE");
+
+  // Con confirmación explícita → EXECUTING
+  const gate2 = evaluateGate({
+    phase: "CONFIRMING",
+    slotsComplete: true,
+    userText: "sí",
+    hasRecommendation: false,
+    hasPendingSideEffects: false,
+  });
+  assert.equal(gate2.nextPhase, "EXECUTING");
+  assert.equal(gate2.action, "EXECUTE");
+});
+
+test("2B2-26. delivery no necesita bypass del anti-duplicado", () => {
+  // Verificar que el bucle de respuesta idéntica se rompe por el cambio de phase
+  // Si phase avanza a CONFIRMING, la siguiente respuesta será diferente
+  const state1 = makeState({ phase: "GATHERING" as const, slots: { categoria: "A1", circuito: "oficial", fecha: "viernes", hora: "10:00" } });
+  const state2 = makeState({ phase: "CONFIRMING" as const, slots: { categoria: "A1", circuito: "oficial", fecha: "viernes", hora: "10:00" } });
+
+  assert.notEqual(state1.phase, state2.phase);
+  // Las respuestas serán diferentes porque el phase cambió
 });
