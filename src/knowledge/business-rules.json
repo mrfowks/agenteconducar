@@ -29,7 +29,7 @@
     "con_instructor": true,
     "circuitos": {
       "oficial": "Pista oficial",
-      "alternativo": "Circuito alterno (copia idéntica del circuito oficial)"
+      "alternativo": "Circuito alterno (idéntico al circuito oficial, dentro de las instalaciones de Conducar)"
     },
     "nota": "En días de examen, si la pista oficial está ocupada, la práctica puede realizarse en circuito alterno"
   },

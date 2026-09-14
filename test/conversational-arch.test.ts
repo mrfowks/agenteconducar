@@ -111,10 +111,10 @@ test("SM4. Extraer múltiples datos 'A1 y martes'", () => {
   assert.ok(result.extracted.fecha);
 });
 
-test("SM5. No sobrescribir slot existente", () => {
+test("SM5. Slot existente se actualiza si usuario proporciona nuevo valor", () => {
   const state = makeState({ activeIntent: "RESERVA", slots: { categoria: "A2A" } });
   const result = extractSlots("práctica A1", "RESERVA", state);
-  assert.equal(result.updated.categoria, "A2A"); // No se sobrescribe
+  assert.equal(result.updated.categoria, "A1"); // FIX1: se actualiza con el nuevo valor
 });
 
 test("SM6. Identificar slots faltantes", () => {

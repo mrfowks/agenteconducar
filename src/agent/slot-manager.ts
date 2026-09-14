@@ -22,13 +22,29 @@ export function extractSlots(
 
   // Extraer cada slot del texto
   for (const slot of allSlots) {
-    if (updated[slot.name] !== undefined) continue; // Ya tiene valor
+    if (updated[slot.name] !== undefined) {
+      // Permitir actualización si el usuario proporciona un valor explícito
+      // y el nuevo valor es diferente (corrección de un dato anterior)
+      const newValue = extractSlotValue(normalized, slot);
+      if (newValue !== null && newValue !== updated[slot.name]) {
+        updated[slot.name] = newValue;
+        extracted[slot.name] = newValue;
+      }
+      continue;
+    }
 
     const value = extractSlotValue(normalized, slot);
     if (value !== null) {
       extracted[slot.name] = value;
       updated[slot.name] = value;
     }
+  }
+
+  // Detección post-extracción: examen próximo mencionado por el usuario
+  const examDate = extractExamDate(normalized);
+  if (examDate && updated.examen_fecha === undefined) {
+    extracted.examen_fecha = examDate;
+    updated.examen_fecha = examDate;
   }
 
   // Identificar slots requeridos que faltan
@@ -174,4 +190,62 @@ function extractNumberValue(text: string, _slot: SlotDefinition): number | null 
 function extractStringValue(text: string, _slot: SlotDefinition): string | null {
   // Para strings, devolver el texto relevante
   return text.length > 0 ? text : null;
+}
+
+/**
+ * Extrae la fecha de examen mencionada por el usuario.
+ * Ej: "mi examen de manejo es el sábado" → "sábado"
+ */
+function extractExamDate(text: string): string | null {
+  const patterns = [
+    /mi\s+examen\s+(?:de\s+manejo\s+)?(?:es\s+)?(?:el\s+)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i,
+    /examen\s+(?:de\s+manejo\s+)?(?:es\s+)?(?:el\s+)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i,
+  ];
+  for (const p of patterns) {
+    const m = p.exec(text);
+    if (m) {
+      // Normalizar sin acentos para consistencia
+      return m[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    }
+  }
+  return null;
+}
+
+/**
+ * Detecta si un nuevo valor de slot contradice un valor anterior.
+ * Ejemplo: timePreference="mañana" + nuevo valor "2 pm" → contradicción.
+ * Se resuelve como corrección, no como error.
+ */
+export function detectSlotConflict(
+  slotName: string,
+  existingValue: unknown,
+  newValue: unknown,
+): { hasConflict: boolean; resolution: "update" | "keep" | "ask" } {
+  if (!existingValue || !newValue) return { hasConflict: false, resolution: "update" };
+  if (existingValue === newValue) return { hasConflict: false, resolution: "keep" };
+
+  // Conflicto temporal: "mañana" vs "2 pm"
+  if (slotName === "hora" || slotName === "timePreference") {
+    // Si el nuevo valor es una hora concreta, reemplazar
+    if (/^\d{1,2}:\d{2}$/.test(String(newValue)) || /[ap]\.?m\.?/i.test(String(newValue))) {
+      return { hasConflict: true, resolution: "update" };
+    }
+  }
+
+  // Conflicto de fecha: "viernes" vs "miércoles"
+  if (slotName === "fecha") {
+    return { hasConflict: true, resolution: "update" };
+  }
+
+  // Conflicto de categoría: "A1" vs "A2B"
+  if (slotName === "categoria") {
+    return { hasConflict: true, resolution: "update" };
+  }
+
+  // Conflicto de circuito: "oficial" vs "alterno"
+  if (slotName === "circuito") {
+    return { hasConflict: true, resolution: "update" };
+  }
+
+  return { hasConflict: false, resolution: "update" };
 }

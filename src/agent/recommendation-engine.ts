@@ -62,6 +62,25 @@ function hasCombinationContext(slots: Record<string, unknown>): boolean {
   return wantsVehicle && wantsSimulacro;
 }
 
+/**
+ * Verifica si el contexto indica que el examen está próximo.
+ * Detecta: isExamDay (hoy es día de examen) O examen_fecha en slots.
+ */
+function hasExamProximity(
+  slots: Record<string, unknown>,
+  stateSlots: Record<string, unknown>,
+  isExamDay: boolean,
+): boolean {
+  if (isExamDay) return true;
+  // El usuario mencionó la fecha de su examen (extraído por slot-manager)
+  if (stateSlots.examen_fecha || slots.examen_fecha) return true;
+  // La fecha de práctica cae en día de examen (martes, jueves, sábado)
+  const EXAM_DAYS = ["martes", "jueves", "sabado", "sábado"];
+  const fecha = (slots.fecha as string) ?? (stateSlots.fecha as string);
+  if (fecha && EXAM_DAYS.includes(fecha)) return true;
+  return false;
+}
+
 // ── Motor de recomendación ──────────────────────────────────────
 
 /**
@@ -126,8 +145,9 @@ export function evaluateRecommendation(input: RecommendationInput): Recommendati
 
   // ── A partir de aquí: categoría A1 ──
 
-  // ── Regla 3: Examen día + práctica → recomendar simulacro contextual ──
-  if (context.temporalContext.isExamDay) {
+  // ── Regla 3: Examen próximo + práctica → recomendar simulacro contextual ──
+  // Detecta: isExamDay (hoy es día de examen) O examen_fecha en slots O fecha de práctica en día de examen
+  if (hasExamProximity(slots, state.slots, context.temporalContext.isExamDay)) {
     if (activeIntent === "PRACTICA" || activeIntent === "SIMULACRO") {
       // Verificar si ya tiene simulacro agendado
       const hasSimulacroScheduled = state.slots.actividad === "simulacro";
@@ -137,10 +157,10 @@ export function evaluateRecommendation(input: RecommendationInput): Recommendati
           recommendation: {
             type: "CONTEXTUAL_SIMULACRO",
             target: "SIMULACRO",
-            reason: "Dado que hoy es día de examen, el simulacro te permite practicar en la pista oficial de 5:30 AM a 7:30 AM, con instructor.",
+            reason: "Dado que tu examen está cerca, el simulacro te permite practicar en la pista oficial de 5:30 AM a 7:30 AM, con instructor.",
             confidence: 0.85,
             supportingFacts: [
-              "Hoy es día de examen",
+              "Examen próximo detectado",
               "Simulacro: martes/jueves/sábado 5:30-7:30 AM, pista oficial",
               "Duración individual: 20 minutos",
             ],

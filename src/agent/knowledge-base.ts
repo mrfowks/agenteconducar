@@ -36,7 +36,7 @@ export function createKnowledgeBase(): KnowledgeBase {
         lines.push(`El examen de reglas NO se realiza en Conducar.`);
         lines.push(`El examen práctico SÍ se realiza en Conducar para obtención de licencia (${rules.examenes.examen_practico.dias.join(", ")} ${rules.examenes.examen_practico.horario}).`);
         lines.push(`El simulacro se realiza en el circuito donde se realiza el examen práctico (${rules.simulacro.dias.join(", ")} ${rules.simulacro.horario}, ${rules.simulacro.duracion_min} min, solo circuito oficial).`);
-        lines.push(`Las prácticas son con instructor profesional (${rules.practica.dias}, ${rules.practica.horario}, ${rules.practica.duracion_min} min). El circuito alterno es una copia idéntica del circuito oficial.`);
+        lines.push(`Las prácticas son con instructor profesional (${rules.practica.dias}, ${rules.practica.horario}, ${rules.practica.duracion_min} min). El circuito alterno es idéntico al circuito oficial y está dentro de las instalaciones de Conducar.`);
       }
 
       if (intent === "ALQUILER_EXAMEN") {

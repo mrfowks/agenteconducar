@@ -231,7 +231,7 @@ test("2B2-11. FAQ contextual conserva intención", async () => {
   assert.equal(intent.intent, "PRACTICA");
 });
 
-test("2B2-12. slot previamente capturado no se vuelve a preguntar", async () => {
+test("2B2-12. slot previamente capturado se actualiza con nuevo valor explícito", async () => {
   const { extractSlots } = await import("../src/agent/slot-manager");
   
   const state = {
@@ -248,9 +248,9 @@ test("2B2-12. slot previamente capturado no se vuelve a preguntar", async () => 
     expiresAt: null,
   };
   
-  // Mensaje con dato ya capturado
+  // Mensaje con dato diferente al capturado → se actualiza (FIX1)
   const result = extractSlots("quiero A2A", "RESERVA", state);
-  assert.equal(result.updated.categoria, "A1"); // No se sobrescribe
+  assert.equal(result.updated.categoria, "A2A"); // Se actualiza con el nuevo valor
   assert.equal(result.updated.circuito, "oficial"); // Se preserva
 });
 

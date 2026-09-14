@@ -27,7 +27,7 @@ export const INTENT_DEFINITIONS: IntentDefinition[] = [
     optionalSlots: [],
     tools: ["consultar_agenda", "consultar_disponibilidad", "consultar_fechas_disponibles", "crear_reserva"],
     exitConditions: ["reserva_creada", "handoff"],
-    businessRules: ["Con instructor", "Circuito alterno es copia idéntica del oficial", "Duración 30 min"],
+    businessRules: ["Con instructor", "Circuito alterno idéntico al oficial, dentro de instalaciones de Conducar", "Duración 30 min"],
   },
   {
     intent: "PAQUETE",

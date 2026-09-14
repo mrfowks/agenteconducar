@@ -7,8 +7,21 @@ import type {
 } from "./types";
 import type { RecommendationResult } from "./recommendation-engine";
 import { evaluateGate, buildConfirmationSummary } from "./confirmation-gate";
+import { detectSlotConflict } from "./slot-manager";
 
 const MAX_REPROMPTS = 3;
+
+/**
+ * Prioridad de slots: preguntar en este orden (primero lo más básico).
+ *_categoria → circuito → fecha → hora
+ */
+const SLOT_PRIORITY: Record<string, number> = {
+  categoria: 1,
+  circuito: 2,
+  fecha: 3,
+  fecha_examen: 3,
+  hora: 4,
+};
 
 export interface ResponseDeciderInput {
   state: ConversationStateData;
@@ -104,9 +117,13 @@ export function decideResponse(input: ResponseDeciderInput): ResponseAction {
     };
   }
 
-  // 11. Slots faltantes → repreguntar (UNA pregunta a la vez)
+  // 11. Slots faltantes → repreguntar (UNA pregunta a la vez, por prioridad)
   if (slots.missing.length > 0) {
-    const nextSlot = slots.missing[0];
+    // Ordenar por prioridad: categoria → circuito → fecha → hora
+    const sorted = [...slots.missing].sort(
+      (a, b) => (SLOT_PRIORITY[a.name] ?? 99) - (SLOT_PRIORITY[b.name] ?? 99),
+    );
+    const nextSlot = sorted[0];
     return { type: "REPROMPT", question: nextSlot.question, slotName: nextSlot.name };
   }
 
