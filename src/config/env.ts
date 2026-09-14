@@ -238,6 +238,17 @@ export const env = {
 
   webhookPath: process.env.WEBHOOK_PATH ?? "/webhook/meta",
 
+  // Feature flags (Fase 2B.7). USE_STATEFUL_ROUTER=false por defecto → producción segura.
+  featureFlags: {
+    useStatefulRouter: process.env.USE_STATEFUL_ROUTER === "true",
+    canaryPhones: (process.env.CANARY_PHONES ?? "").split(",").filter(Boolean),
+    canaryConversationIds: (process.env.CANARY_CONVERSATION_IDS ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isFinite(n)),
+  },
+
   // Chatwoot (Fase 2). Con enabled=false el backend Meta actual sigue intacto.
   // Con enabled=true los valores vienen ya validados (fail-fast) por validateChatwootEnv.
   chatwoot: {

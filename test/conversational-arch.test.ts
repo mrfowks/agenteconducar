@@ -146,7 +146,7 @@ test("RD1. Handoff explícito", () => {
   const state = makeState();
   const intent = { intent: "HANDOFF" as const, confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "asesor" };
   const slots = { extracted: {}, updated: {}, missing: [], isComplete: true };
-  const result = decideResponse(state, intent, slots, "asesor");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "asesor" });
   assert.equal(result.type, "HANDOFF");
 });
 
@@ -154,7 +154,7 @@ test("RD2. Máximo 3 repreguntas → handoff", () => {
   const state = makeState({ repromptCount: 3 });
   const intent = { intent: "RESERVA" as const, confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "reserva" };
   const slots = { extracted: {}, updated: {}, missing: [{ name: "categoria", question: "¿Categoría?", type: "enum" as const, required: true }], isComplete: false };
-  const result = decideResponse(state, intent, slots, "reserva");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "reserva" });
   assert.equal(result.type, "HANDOFF");
 });
 
@@ -162,7 +162,7 @@ test("RD3. Slot faltante → repregunta", () => {
   const state = makeState({ activeIntent: "RESERVA", phase: "GATHERING" });
   const intent = { intent: "RESERVA" as const, confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "práctica" };
   const slots = { extracted: {}, updated: {}, missing: [{ name: "categoria", question: "¿Categoría?", type: "enum" as const, required: true }], isComplete: false };
-  const result = decideResponse(state, intent, slots, "práctica");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "práctica" });
   assert.equal(result.type, "REPROMPT");
   if (result.type === "REPROMPT") {
     assert.equal(result.slotName, "categoria");
@@ -173,7 +173,7 @@ test("RD4. Slots completos → confirmar", () => {
   const state = makeState({ activeIntent: "RESERVA", phase: "GATHERING", slots: { actividad: "practica", categoria: "A1", circuito: "oficial", fecha: "martes", hora: "10:00" } });
   const intent = { intent: "RESERVA" as const, confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "" };
   const slots = { extracted: {}, updated: state.slots, missing: [], isComplete: true };
-  const result = decideResponse(state, intent, slots, "");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "" });
   assert.equal(result.type, "CONFIRM");
 });
 
@@ -181,7 +181,7 @@ test("RD5. Confirmación → ejecutar", () => {
   const state = makeState({ activeIntent: "RESERVA", phase: "CONFIRMING", slots: { actividad: "practica", categoria: "A1" } });
   const intent = { intent: "RESERVA" as const, confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "sí" };
   const slots = { extracted: {}, updated: state.slots, missing: [], isComplete: true };
-  const result = decideResponse(state, intent, slots, "sí");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "sí" });
   assert.equal(result.type, "EXECUTE_TOOL");
 });
 
@@ -189,7 +189,7 @@ test("RD6. Consulta ambigua → aclaración", () => {
   const state = makeState();
   const intent = { intent: "OTROS" as const, confidence: 0.3, isChange: false, isExplicitChange: false, rawText: "ayuda" };
   const slots = { extracted: {}, updated: {}, missing: [], isComplete: true };
-  const result = decideResponse(state, intent, slots, "ayuda");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "ayuda" });
   assert.equal(result.type, "ASK_CLARIFICATION");
 });
 
@@ -314,10 +314,11 @@ test("INT10. examen de reglas tiene prioridad sobre aliases", () => {
   assert.equal(result.intent, "HANDOFF");
 });
 
-test("INT11. 'a las 10' → '10:00'", () => {
+test("INT11. 'a las 10' sin AM/PM → undefined (hora ambigua)", () => {
   const state = makeState({ activeIntent: "RESERVA", slots: {} });
   const result = extractSlots("a las 10", "RESERVA", state);
-  assert.equal(result.extracted.hora, "10:00");
+  // Sin AM/PM y sin ":" → hora ambigua, no extraer
+  assert.equal(result.extracted.hora, undefined);
 });
 
 test("INT12. '10 am' → '10:00'", () => {
@@ -368,7 +369,7 @@ test("INT19. máximo 3 aclaraciones", () => {
   const state = makeState({ repromptCount: 3 });
   const intent = { intent: "OTROS" as const, confidence: 0.3, isChange: false, isExplicitChange: false, rawText: "?" };
   const slots = { extracted: {}, updated: {}, missing: [], isComplete: true };
-  const result = decideResponse(state, intent, slots, "?");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "?" });
   assert.equal(result.type, "HANDOFF");
 });
 
@@ -376,7 +377,7 @@ test("INT20. tercer intento aún permite repregunta", () => {
   const state = makeState({ repromptCount: 2, activeIntent: "RESERVA", phase: "GATHERING" });
   const intent = { intent: "RESERVA" as const, confidence: 0.9, isChange: false, isExplicitChange: false, rawText: "" };
   const slots = { extracted: {}, updated: {}, missing: [{ name: "categoria", question: "¿Categoría?", type: "enum" as const, required: true }], isComplete: false };
-  const result = decideResponse(state, intent, slots, "");
+  const result = decideResponse({ state, intent, slots, recommendation: null, userText: "" });
   assert.equal(result.type, "REPROMPT"); // Aún puede repreguntar (intento 3)
 });
 
@@ -622,4 +623,111 @@ test("COMPAT1. no se modificó tools.ts", () => {
   const tools = require("../src/agent/tools");
   assert.ok(tools.TOOL_DEFINITIONS);
   assert.ok(tools.TOOL_EXECUTORS);
+});
+
+// ── Tests de normalización de hora (corrección edge case) ────────
+
+test("HORA1. 'a las 3 pm' → '15:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 3 pm", "RESERVA", state);
+  assert.equal(result.extracted.hora, "15:00");
+});
+
+test("HORA2. 'a las 3 p. m.' → '15:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 3 p. m.", "RESERVA", state);
+  assert.equal(result.extracted.hora, "15:00");
+});
+
+test("HORA3. '3 pm' → '15:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("3 pm", "RESERVA", state);
+  assert.equal(result.extracted.hora, "15:00");
+});
+
+test("HORA4. '3:30 pm' → '15:30'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("3:30 pm", "RESERVA", state);
+  assert.equal(result.extracted.hora, "15:30");
+});
+
+test("HORA5. 'a las 10 pm' → '22:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 10 pm", "RESERVA", state);
+  assert.equal(result.extracted.hora, "22:00");
+});
+
+test("HORA6. 'a las 3 am' → '03:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 3 am", "RESERVA", state);
+  assert.equal(result.extracted.hora, "03:00");
+});
+
+test("HORA7. '3 am' → '03:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("3 am", "RESERVA", state);
+  assert.equal(result.extracted.hora, "03:00");
+});
+
+test("HORA8. 'a las 10' sin AM/PM → undefined (hora ambigua)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 10", "RESERVA", state);
+  // Sin AM/PM y sin ":" → ambigua, no inventar
+  assert.equal(result.extracted.hora, undefined);
+});
+
+test("HORA9. '10 am' → '10:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("10 am", "RESERVA", state);
+  assert.equal(result.extracted.hora, "10:00");
+});
+
+test("HORA10. '10:30 am' → '10:30'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("10:30 am", "RESERVA", state);
+  assert.equal(result.extracted.hora, "10:30");
+});
+
+test("HORA11. '22:00' → '22:00'", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("22:00", "RESERVA", state);
+  assert.equal(result.extracted.hora, "22:00");
+});
+
+test("HORA12. hora ambigua 'a las 3' sin AM/PM → undefined (no inventar)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 3", "RESERVA", state);
+  // Sin AM/PM y sin ":" → hora ambigua, no extraer
+  assert.equal(result.extracted.hora, undefined);
+});
+
+test("HORA12b. 'sobre las 3' sin AM/PM → undefined (ambigua)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("sobre las 3", "RESERVA", state);
+  assert.equal(result.extracted.hora, undefined);
+});
+
+test("HORA12c. 'tipo 3' sin AM/PM → undefined (ambigua)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("tipo 3", "RESERVA", state);
+  assert.equal(result.extracted.hora, undefined);
+});
+
+test("HORA12d. 'a las 10' sin AM/PM → undefined (ambigua)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("a las 10", "RESERVA", state);
+  // Sin AM/PM y sin ":" → ambigua
+  assert.equal(result.extracted.hora, undefined);
+});
+
+test("HORA13. '12 pm' → '12:00' (mediodía)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("12 pm", "RESERVA", state);
+  assert.equal(result.extracted.hora, "12:00");
+});
+
+test("HORA14. '12 am' → '00:00' (medianoche)", () => {
+  const state = makeState({ activeIntent: "RESERVA", slots: {} });
+  const result = extractSlots("12 am", "RESERVA", state);
+  assert.equal(result.extracted.hora, "00:00");
 });

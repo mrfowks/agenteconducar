@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { env } from "../../config/env";
 import { prisma } from "../../db/client";
-import { runAgent } from "../../agent/agent";
+import { routeMessage } from "../../agent/router-gateway";
 import {
   askVoucherConfirmation,
   handleVoucherReceived,
@@ -164,7 +164,7 @@ export function resolveStoredMimeType(dlMimeType: string, buffer: Buffer): strin
 
 /**
  * Procesa un evento message_created entrante de Chatwoot (contacto).
- * Reutiliza la lógica existente (logIncoming, handoff, booking, pagos, runAgent,
+ * Reutiliza la lógica existente (logIncoming, handoff, booking, pagos, routeMessage,
  * fallback) adaptada al payload de Chatwoot. NO duplica la lógica del agente.
  */
 export async function processIncomingMessage(payload: ChatwootMessagePayload): Promise<void> {
@@ -369,7 +369,16 @@ export async function processIncomingMessage(payload: ChatwootMessagePayload): P
       `[chatwoot-flow] RUN_AGENT_START messageId=${extracted.messageId} phone=${phone} textLen=${text.length} isNew=${isNewUser}`,
     );
     currentStage = "RUN_AGENT";
-    const reply = await runAgent(phone, text, isNewUser, dedupId);
+    const reply = await routeMessage({
+      phone,
+      text,
+      isNewUser,
+      messageId: dedupId,
+      chatwootConversationId: extracted.chatwootConversationId ?? null,
+      chatwootContactId: extracted.chatwootContactId ?? null,
+      sourceId: extracted.sourceId ?? null,
+      source: "chatwoot",
+    });
     await actLikeHuman(async () => {}); // retardo mínimo humano
 
     const finalReply = isNewUser ? `${WELCOME_MESSAGE}\n\n${reply}` : reply;

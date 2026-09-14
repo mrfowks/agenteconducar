@@ -25,6 +25,8 @@ export interface ConversationStateData {
   chatwootContactId: number | null;
   sourceId: string | null;
   activeIntent: Intent | null;
+  previousIntent?: Intent | null;
+  intentChangedAt?: Date | null;
   phase: ConversationPhase;
   slots: Record<string, unknown>;
   repromptCount: number;
@@ -62,6 +64,25 @@ export interface IntentDetectionResult {
   rawText: string;
 }
 
+/**
+ * Datos de recomendación para la acción RECOMMEND.
+ * Estructuralmente compatible con Recommendation de recommendation-engine.ts.
+ */
+export interface RecommendationData {
+  type: string;
+  target: string;
+  reason: string;
+  confidence: number;
+  supportingFacts: string[];
+  alternatives: string[];
+  estimatedValue: {
+    price: number | null;
+    savings: number | null;
+    separateTotal: number | null;
+  };
+  requiresConfirmation: boolean;
+}
+
 export interface SlotExtractionResult {
   extracted: Record<string, unknown>;
   updated: Record<string, unknown>;
@@ -73,6 +94,7 @@ export type ResponseAction =
   | { type: "RESPOND"; content: string }
   | { type: "REPROMPT"; question: string; slotName: string }
   | { type: "CONFIRM"; summary: string }
+  | { type: "RECOMMEND"; recommendation: RecommendationData }
   | { type: "EXECUTE_TOOL"; tool: string; args: Record<string, unknown> }
   | { type: "HANDOFF"; reason: string }
   | { type: "ASK_CLARIFICATION"; options: string[] };

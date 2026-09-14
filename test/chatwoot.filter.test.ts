@@ -316,3 +316,11 @@ test("E14. sender.type undefined + source_id BSUID + sender.id → procesa", () 
   );
   assert.deepEqual(res, { process: true });
 });
+
+test("E-PRIVATE. private=true → rechazado", () => {
+  const res = messageFilter(
+    validPayload({ private: true }),
+    OPTIONS,
+  );
+  assert.deepEqual(res, { process: false, reason: "private" });
+});

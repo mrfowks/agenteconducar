@@ -5,24 +5,32 @@ import type {
   ResponseAction,
   SlotDefinition,
 } from "./types";
+import type { RecommendationResult } from "./recommendation-engine";
+import { evaluateGate, buildConfirmationSummary } from "./confirmation-gate";
 
 const MAX_REPROMPTS = 3;
 
+export interface ResponseDeciderInput {
+  state: ConversationStateData;
+  intent: IntentDetectionResult;
+  slots: SlotExtractionResult;
+  recommendation: RecommendationResult | null;
+  userText: string;
+}
+
 /**
- * Decide qué hacer: responder, repreguntar, confirmar, ejecutar herramienta o hacer handoff.
+ * Decide qué hacer: responder, repreguntar, recomendar, confirmar, ejecutar o handoff.
+ * Integrado con ConfirmationGate y RecommendationEngine.
  */
-export function decideResponse(
-  state: ConversationStateData,
-  intent: IntentDetectionResult,
-  slots: SlotExtractionResult,
-  text: string,
-): ResponseAction {
-  // 1. Handoff explícito (usuario pide asesor)
+export function decideResponse(input: ResponseDeciderInput): ResponseAction {
+  const { state, intent, slots, recommendation, userText } = input;
+
+  // 1. Handoff explícito
   if (intent.intent === "HANDOFF") {
     return { type: "HANDOFF", reason: "Usuario solicitó asesor" };
   }
 
-  // 2. Máximo 2 aclaraciones → handoff
+  // 2. Máximo 3 aclaraciones → handoff
   if (state.repromptCount >= MAX_REPROMPTS) {
     return { type: "HANDOFF", reason: "Máximo de aclaraciones alcanzado" };
   }
@@ -40,45 +48,75 @@ export function decideResponse(
     };
   }
 
-  // 5. Slots faltantes → repreguntar (UNA pregunta a la vez)
+  // 5. Evaluar ConfirmationGate
+  const gateInput = {
+    phase: state.phase,
+    slotsComplete: slots.isComplete,
+    userText,
+    hasRecommendation: recommendation?.recommendation !== null,
+    hasPendingSideEffects: false, // No hay side effects en Fase 2B
+  };
+
+  const gate = evaluateGate(gateInput);
+
+  // 6. Si el gate indica HANDOFF
+  if (gate.nextPhase === "HANDOFF") {
+    return { type: "HANDOFF", reason: gate.blockReason ?? "Derivación a asesor" };
+  }
+
+  // 7. Si hay recomendación y estamos en GATHERING con slots completos
+  if (recommendation?.recommendation && slots.isComplete && state.phase === "GATHERING") {
+    return {
+      type: "RECOMMEND",
+      recommendation: recommendation.recommendation,
+    };
+  }
+
+  // 8. Si el gate indica CONFIRMING
+  if (gate.action === "ASK_CONFIRM") {
+    return {
+      type: "CONFIRM",
+      summary: buildConfirmationSummary(
+        slots.updated,
+        recommendation?.recommendation,
+      ),
+    };
+  }
+
+  // 9. Si el gate indica EXECUTE
+  if (gate.action === "EXECUTE") {
+    // En Fase 2B.4 NO ejecutamos realmente
+    // Solo devolvemos la decisión estructurada
+    return {
+      type: "EXECUTE_TOOL",
+      tool: getToolForIntent(state.activeIntent),
+      args: slots.updated,
+    };
+  }
+
+  // 10. Si el gate indica MODIFY (rechazo/post-acción)
+  if (gate.action === "MODIFY") {
+    // Volver a GATHERING: el usuario quiere cambiar algo
+    return {
+      type: "REPROMPT",
+      question: "¿Qué dato quieres cambiar?",
+      slotName: "modification",
+    };
+  }
+
+  // 11. Slots faltantes → repreguntar (UNA pregunta a la vez)
   if (slots.missing.length > 0) {
     const nextSlot = slots.missing[0];
     return { type: "REPROMPT", question: nextSlot.question, slotName: nextSlot.name };
   }
 
-  // 6. Todos los slots completos → confirmar
-  if (slots.isComplete && state.phase === "GATHERING") {
-    return { type: "CONFIRM", summary: buildConfirmationSummary(state) };
-  }
-
-  // 7. Usuario confirma → ejecutar
-  if (state.phase === "CONFIRMING" && isConfirmation(text)) {
-    return { type: "EXECUTE_TOOL", tool: getToolForIntent(state.activeIntent), args: state.slots };
-  }
-
-  // 8. Respuesta directa
+  // 12. Respuesta directa
   return { type: "RESPOND", content: "Puedo ayudarte con eso. ¿Qué necesitas?" };
 }
 
 function isInformationUnavailable(slot: SlotDefinition): boolean {
   const unavailableTopics = ["examen_de_reglas", "requisitos_mtc", "estado_tramite"];
   return unavailableTopics.includes(slot.name);
-}
-
-function isConfirmation(text: string): boolean {
-  const normalized = text.toLowerCase().trim();
-  return /^(s[ií]|as[ií]\s+es|correcto|dale|ok|confirmo|claro|perfecto|exacto)(\s|$)/i.test(normalized);
-}
-
-function buildConfirmationSummary(state: ConversationStateData): string {
-  const slots = state.slots;
-  const parts: string[] = [];
-  if (slots.actividad) parts.push(`Servicio: ${slots.actividad}`);
-  if (slots.categoria) parts.push(`Categoría: ${slots.categoria}`);
-  if (slots.circuito) parts.push(`Circuito: ${slots.circuito}`);
-  if (slots.fecha) parts.push(`Fecha: ${slots.fecha}`);
-  if (slots.hora) parts.push(`Hora: ${slots.hora}`);
-  return `Resumen:\n${parts.join("\n")}\n\n¿Confirmas estos datos?`;
 }
 
 function getToolForIntent(intent: string | null): string {
@@ -88,7 +126,7 @@ function getToolForIntent(intent: string | null): string {
     case "PRACTICA":
       return "crear_reserva";
     case "ALQUILER_EXAMEN":
-      return "consultar_categorias";
+      return "consultar_disponibilidad";
     case "PAQUETE":
       return "consultar_paquetes";
     case "HORARIOS":

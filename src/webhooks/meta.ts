@@ -12,7 +12,7 @@ import {
 import { detectEscalationTrigger } from "../modules/payments/service";
 import { logIncoming, logOutgoing } from "../modules/messages/service";
 import { downloadAndSaveMedia, sendText, markAsRead, normalizePhone } from "../modules/whatsapp/client";
-import { runAgent } from "../agent/agent";
+import { routeMessage } from "../agent/router-gateway";
 import { prisma } from "../db/client";
 
 // ──────────────────────────────────────────────
@@ -411,7 +411,14 @@ console.log(`[meta-flow] MEDIA_IN_END messageId=${messageId} phone=${phone}`);
     currentStage = "RUN_AGENT";
     console.log(`[meta-flow] RUN_AGENT_START messageId=${messageId} phone=${phone}`);
 
-    const reply = await runAgent(phone, text, isNewUser, messageId);
+    const reply = await routeMessage({
+      phone,
+      text,
+      isNewUser,
+      messageId,
+      chatwootConversationId: null,
+      source: "meta",
+    });
 
     // 3. DESPUÉS DE runAgent EXITOSO
     console.log(`[meta-flow] RUN_AGENT_SUCCESS messageId=${messageId} replyLen=${reply.length}`);
