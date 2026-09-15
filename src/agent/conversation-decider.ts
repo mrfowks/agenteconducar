@@ -145,8 +145,15 @@ function getNextUsefulSlot(ctx: ConversationContext, turn: TurnUnderstanding): {
   const missing = getMissingSlots(ctx);
   if (missing.length === 0) return null;
 
-  // Prioridad: categoria → circuito → fecha → hora
-  const priority: Record<string, number> = { categoria: 1, circuito: 2, fecha: 3, hora: 4 };
+  // Prioridad base: categoria → circuito → fecha → hora
+  let priority: Record<string, number> = { categoria: 1, circuito: 2, fecha: 3, hora: 4 };
+
+  // Si el usuario mencionó examen, preguntar fecha antes que circuito
+  // (la fecha es más urgente cuando hay contexto de examen próximo)
+  if (ctx.slots.examen_fecha && missing.includes("fecha")) {
+    priority = { categoria: 1, fecha: 2, circuito: 3, hora: 4 };
+  }
+
   const sorted = missing.sort((a, b) => (priority[a] ?? 99) - (priority[b] ?? 99));
 
   const name = sorted[0];

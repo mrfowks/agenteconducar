@@ -54,6 +54,7 @@ export interface RouteGatewayParams {
 /**
  * Punto de decisión: ¿usar ConversationRouter o runAgent?
  *
+ * USE_NEW_FLOW=shadow → ejecuta nuevo motor en paralelo (sin side effects), SIEMPRE devuelve flujo actual
  * USE_STATEFUL_ROUTER=false → runAgent (producción actual)
  * USE_STATEFUL_ROUTER=true + canary match → ConversationRouter
  * USE_STATEFUL_ROUTER=true + no canary → runAgent
@@ -71,6 +72,88 @@ export async function routeMessage(params: RouteGatewayParams): Promise<string> 
     sourceId,
     source,
   } = params;
+
+  // ── Gate 0: Shadow Mode ──
+  // Ejecuta el nuevo motor en paralelo SIN enviar respuestas, SIN side effects.
+  // SIEMPRE devuelve la respuesta del flujo actual.
+  if (env.featureFlags.useNewFlow === "shadow") {
+    // 1. Ejecutar flujo actual (producción) — resultado real
+    let currentResponse: string;
+    if (!env.featureFlags.useStatefulRouter) {
+      currentResponse = await runAgent(phone, text, isNewUser, messageId);
+    } else if (isCanaryTarget(phone, chatwootConversationId)) {
+      // ConversationRouter para canary targets
+      try {
+        const result = await processMessage(text, {
+          chatwootConversationId,
+          phone,
+          chatwootContactId,
+          sourceId,
+          isNewUser,
+        });
+        const recommendation = evaluateRecommendation({
+          activeIntent: result.state.activeIntent,
+          slots: result.slots,
+          state: result.state,
+          context: result.context,
+        });
+        const action = decideResponse({
+          state: result.state,
+          intent: result.intent,
+          slots: {
+            extracted: result.slots,
+            updated: result.slots,
+            missing: result.missingSlots.map((name) => ({
+              name,
+              question: `¿Podrías indicarme ${name}?`,
+              type: "string" as const,
+              required: true,
+            })),
+            isComplete: result.missingSlots.length === 0,
+          },
+          recommendation,
+          userText: text,
+        });
+        if (action.type === "RECOMMEND" && recommendation?.recommendation) {
+          result.state.lastRecommendationType = recommendation.recommendation.type;
+        }
+        const response = buildResponse({
+          action,
+          state: result.state,
+          context: result.context,
+          recommendation: recommendation.recommendation,
+        });
+        currentResponse = response.text;
+      } catch {
+        currentResponse = await runAgent(phone, text, isNewUser, messageId);
+      }
+    } else {
+      currentResponse = await runAgent(phone, text, isNewUser, messageId);
+    }
+
+    // 2. Ejecutar nuevo motor en shadow (sin enviar, sin side effects)
+    try {
+      const { runShadow } = await import("./shadow-runner");
+      const conversationKey = chatwootConversationId?.toString() ?? phone ?? `msg-${messageId}`;
+      const shadowResult = await runShadow(
+        conversationKey,
+        messageId,
+        text,
+        // currentFlowAction: inferir qué hizo el flujo actual
+        env.featureFlags.useStatefulRouter ? "ConversationRouter" : "runAgent",
+      );
+
+      // 3. Log seguro de comparación
+      console.log(
+        `[shadow-runner] SHADOW_COMPARISON conv=${conversationKey.slice(-4)} msg=${messageId} current=${shadowResult.comparison.currentFlowAction} new=${shadowResult.comparison.newFlowAction} differs=${shadowResult.comparison.differs} response=${shadowResult.responseText.slice(0, 60)}`
+      );
+    } catch (shadowErr) {
+      console.warn(`[shadow-runner] shadow error (non-blocking):`, shadowErr instanceof Error ? shadowErr.message : shadowErr);
+    }
+
+    // 4. SIEMPRE devolver la respuesta del flujo actual
+    return currentResponse;
+  }
 
   // ── Gate 1: Feature flag ──
   if (!env.featureFlags.useStatefulRouter) {

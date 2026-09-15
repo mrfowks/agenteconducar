@@ -241,6 +241,12 @@ export const env = {
   // Feature flags (Fase 2B.7). USE_STATEFUL_ROUTER=false por defecto → producción segura.
   featureFlags: {
     useStatefulRouter: process.env.USE_STATEFUL_ROUTER === "true",
+    /** Modo del nuevo motor conversacional:
+     *  - "off" (default): desactivado
+     *  - "shadow": ejecuta nuevo motor en paralelo SIN enviar respuestas (solo logging)
+     *  - "active": nuevo motor toma el control (SOLO con canary)
+     */
+    useNewFlow: (process.env.USE_NEW_FLOW ?? "off") as "off" | "shadow" | "active",
     canaryPhones: (process.env.CANARY_PHONES ?? "").split(",").filter(Boolean),
     canaryConversationIds: (process.env.CANARY_CONVERSATION_IDS ?? "")
       .split(",")

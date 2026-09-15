@@ -35,7 +35,7 @@ export function understandTurn(text: string, ctx: ConversationContext): TurnUnde
   const { intent, confidence, isExplicitChange } = detectIntent(normalized, ctx.activeIntent);
 
   // 2. Detectar si es pregunta
-  const isQuestion = /\?|¿|cu[aá]nto|c[oó]mo|d[oó]nde|cu[aá]ndo|qu[eé]|por\s+qu[eé]|hay\s+|atienden|tienen/.test(normalized);
+  const isQuestion = /\?|¿|cu[aá]nto|c[oó]mo|d[oó]nde|cu[aá]ndo|\bqu[eé]\b|por\s+qu[eé]|hay\s+|atienden|tienen/.test(normalized);
 
   // 3. Detectar negación
   const isNegation = /^(no|nah|no\s+quiero|no\s+necesito|no\s+me\s+interesa|no\s+el|no\s+la|no\s+los|no\s+las|no\s+eso|no\s+ese|no\s+esa)/i.test(normalized);
@@ -142,10 +142,10 @@ function extractSlotsFromText(text: string, ctx: ConversationContext): Record<st
   if (examenMatch) slots.examen_fecha = examenMatch[1];
 
   // Preferencias
-  if (/\b(por\s+la\s+mañana|mañana\s+temprano)\b/i.test(text)) {
+  if (/\b(por\s+la\s+mañana|en\s+la\s+mañana|mañana\s+temprano)\b/i.test(text)) {
     slots.prefersMorning = true;
   }
-  if (/\b(por\s+la\s+tarde|tarde|noche)\b/i.test(text)) {
+  if (/\b(por\s+la\s+tarde|en\s+la\s+tarde|tarde|noche)\b/i.test(text)) {
     slots.prefersMorning = false;
   }
 
@@ -181,7 +181,8 @@ function normalizeTime(h: string, m: string | undefined, isPm: boolean | undefin
 function extractDate(text: string): string | null {
   const datePatterns = [
     { regex: /\bhoy\b/i, value: "hoy" },
-    { regex: /\bmañana\b/i, value: "mañana" },
+    // "mañana" como fecha (NO cuando es preferencia horaria: "en la mañana", "por la mañana")
+    { regex: /(?<!en\s+la\s+|por\s+la\s+)\bmañana\b/i, value: "mañana" },
     { regex: /\bpasado\s+mañana\b/i, value: "pasado_mañana" },
     { regex: /\blunes\b/i, value: "lunes" },
     { regex: /\bmartes\b/i, value: "martes" },
@@ -225,7 +226,7 @@ function extractNegations(text: string, _ctx: ConversationContext): { content: s
   }
 
   // "no el mismo día", "no quiero practicar el mismo día", "no practicar el mismo día"
-  if (/no\s+(?:\w+\s+){0,3}(?:el\s+)?mismo\s+d[ií]a/i.test(text)) {
+  if (/no\s+(?:\w+\s+){0,5}(?:el\s+)?mismo\s+d[ií]a/i.test(text)) {
     negations.push({ content: "No el mismo día del examen", negatedSlot: "fecha", negatedValue: "same_as_exam" });
   }
 
