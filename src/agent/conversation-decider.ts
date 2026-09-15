@@ -160,7 +160,7 @@ function getNextUsefulSlot(ctx: ConversationContext, turn: TurnUnderstanding): {
 
   // Generar pregunta contextual (no genérica)
   const questions: Record<string, string> = {
-    categoria: "¿Qué categoría de licencia necesitas? (A1 para auto, A2A, A2B para camioneta, A3A para bus...)",
+    categoria: "¿Qué categoría de licencia necesitas? (A1 para auto, A2 para camioneta/van, A3 para bus/camión)",
     circuito: buildCircuitQuestion(ctx),
     fecha: "¿Qué día te gustaría practicar?",
     hora: buildTimeQuestion(ctx),

@@ -32,7 +32,7 @@ export function createKnowledgeBase(): KnowledgeBase {
 
       if (intent === "ALQUILER_EXAMEN" || intent === "SIMULACRO" || intent === "PRACTICA" || intent === "RESERVA") {
         lines.push(`Precios A1: práctica S/${rules.precios.A1.practica}, simulacro individual S/${rules.precios.A1.simulacro_individual}, alquiler vehículo examen S/${rules.precios.A1.alquiler_vehiculo_examen}.`);
-        lines.push(`Precios por categoría: A1 S/${rules.precios.A1.practica}, A2A S/${rules.precios.A2A.practica}, A2B S/${rules.precios.A2B.practica}, A3A S/${rules.precios.A3A.practica}, A3B S/${rules.precios.A3B.practica}, A3C S/${rules.precios.A3C.practica}.`);
+        lines.push(`Precios por categoría: A1 S/${rules.precios.A1.practica}, A2 S/${rules.precios.A2.practica}, A3 S/${rules.precios.A3.practica}.`);
         lines.push(`El examen de reglas NO se realiza en Conducar.`);
         lines.push(`El examen práctico SÍ se realiza en Conducar para obtención de licencia (${rules.examenes.examen_practico.dias.join(", ")} ${rules.examenes.examen_practico.horario}).`);
         lines.push(`El simulacro se realiza en el circuito donde se realiza el examen práctico (${rules.simulacro.dias.join(", ")} ${rules.simulacro.horario}, ${rules.simulacro.duracion_min} min, solo circuito oficial).`);
@@ -41,15 +41,15 @@ export function createKnowledgeBase(): KnowledgeBase {
 
       if (intent === "ALQUILER_EXAMEN") {
         lines.push(`Vehículo A1: Kia Picanto 2026 automático (opción mecánica disponible). Recomendación preferente: automático.`);
-        lines.push(`A partir de A2B hacia arriba: vehículos mecánicos.`);
-        lines.push(`A3B: dato de vehículo NO confirmado. NO inventar.`);
+        lines.push(`A2 y A3: vehículos mecánicos.`);
       }
 
       if (intent === "PAQUETE") {
         lines.push(`Paquetes disponibles SOLO para categoría A1.`);
         lines.push(`P1 S/${rules.paquetes.P1.precio}: ${rules.paquetes.P1.orientacion}.`);
-        lines.push(`P2 S/${rules.paquetes.P2.precio}: ${rules.paquetes.P2.orientacion}. Ahorro: S/${rules.paquetes.P2.ahorro}.`);
+        lines.push(`P2 S/${rules.paquetes.P2.precio}: ${rules.paquetes.P2.orientacion}.`);
         lines.push(`P3 S/${rules.paquetes.P3.precio}: ${rules.paquetes.P3.orientacion}.`);
+        lines.push(`P4 S/${rules.paquetes.P4.precio}: ${rules.paquetes.P4.orientacion}.`);
         lines.push(`P5 S/${rules.paquetes.P5.precio}: ${rules.paquetes.P5.orientacion}.`);
         lines.push(`NO inventar paquetes para otras categorías.`);
       }

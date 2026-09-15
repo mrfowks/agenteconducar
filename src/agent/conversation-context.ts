@@ -23,7 +23,7 @@ export type DecisionAction =
 
 export interface ConversationSlots {
   actividad: "practica" | "simulacro" | null;
-  categoria: "A1" | "A2A" | "A2B" | "A3A" | "A3B" | "A3C" | null;
+  categoria: "A1" | "A2" | "A3" | null;
   circuito: "oficial" | "alternativo" | null;
   fecha: string | null;
   fechaOriginal: string | null;

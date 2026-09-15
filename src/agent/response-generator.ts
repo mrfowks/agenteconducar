@@ -87,7 +87,7 @@ function generateSlotQuestion(decision: ConversationDecision, ctx: ConversationC
 
   // Fallback contextual
   if (decision.targetSlot === "categoria" && ctx.slots.examen_fecha) {
-    return "¿Qué categoría de licencia necesitas? (A1 para auto, A2A, A2B...)";
+    return "¿Qué categoría de licencia necesitas? (A1, A2, A3)";
   }
   return `¿Podrías indicarme ${decision.targetSlot}?`;
 }

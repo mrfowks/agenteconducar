@@ -395,7 +395,7 @@ test("SL8. phone fallback recupera estado existente", async () => {
     phone,
     activeIntent: "SIMULACRO",
     phase: "GATHERING",
-    slots: { categoria: "A2A" },
+    slots: { categoria: "A2" },
     expiresAt: new Date(Date.now() + 30 * 60_000),
   });
   mockStore.set(999, existing);
@@ -407,7 +407,7 @@ test("SL8. phone fallback recupera estado existente", async () => {
 
   assert.equal(result.activeIntent, "SIMULACRO");
   assert.equal(result.phase, "GATHERING");
-  assert.deepEqual(result.slots, { categoria: "A2A" });
+  assert.deepEqual(result.slots, { categoria: "A2" });
 });
 
 test("SL9. phone fallback resetea estado expirado", async () => {

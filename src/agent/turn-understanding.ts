@@ -110,7 +110,7 @@ function extractSlotsFromText(text: string, ctx: ConversationContext): Record<st
   const slots: Record<string, unknown> = {};
 
   // Categoría
-  const catMatch = /\b(A1|A2A|A2B|A3A|A3B|A3C)\b/i.exec(text);
+  const catMatch = /\b(A1|A2|A3)\b/i.exec(text);
   if (catMatch) slots.categoria = catMatch[1].toUpperCase();
 
   // Circuito
@@ -236,9 +236,9 @@ function extractNegations(text: string, _ctx: ConversationContext): { content: s
 function checkIfAnswersPrevious(text: string, ctx: ConversationContext): { answersPreviousQuestion: boolean; answeredSlot: string | null } {
   if (!ctx.lastAssistantQuestion) return { answersPreviousQuestion: false, answeredSlot: null };
 
-  // Si la última pregunta fue sobre categoría y el texto contiene A1/A2A/etc
+  // Si la última pregunta fue sobre categoría y el texto contiene A1/A2/A3
   if (/categor/i.test(ctx.lastAssistantQuestion)) {
-    const catMatch = /\b(A1|A2A|A2B|A3A|A3B|A3C)\b/i.exec(text);
+    const catMatch = /\b(A1|A2|A3)\b/i.exec(text);
     if (catMatch) return { answersPreviousQuestion: true, answeredSlot: "categoria" };
   }
 

@@ -158,7 +158,7 @@ export function decideResponse(input: ResponseDeciderInput): ResponseAction {
     if (categoriaSlot) {
       return {
         type: "REPROMPT",
-        question: "¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)",
+        question: "¿Qué categoría de licencia necesitas? (A1, A2 o A3)",
         slotName: "categoria",
       };
     }

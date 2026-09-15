@@ -157,7 +157,7 @@ export const TOOL_DEFINITIONS = [
       parameters: {
         type: "object",
         properties: {
-          categoria: { type: "string", description: "Código de categoría: A1, A2A, A2B, A3A, A3B o A3C" },
+          categoria: { type: "string", description: "Código de categoría: A1, A2 o A3" },
           circuito: { type: "string", enum: ["oficial", "alternativo"] },
           actividad: { type: "string", enum: ["practica", "simulacro"] },
           fecha: { type: "string", description: "Fecha en formato AAAA-MM-DD" },

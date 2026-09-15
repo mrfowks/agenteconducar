@@ -79,9 +79,7 @@ test("RE2. ya sabe manejar + 1 hora → P2", () => {
   });
   assert.ok(result.recommendation);
   assert.equal(result.recommendation!.target, "P2");
-  assert.equal(result.recommendation!.estimatedValue.price, 160);
-  assert.equal(result.recommendation!.estimatedValue.savings, 20);
-  assert.equal(result.recommendation!.estimatedValue.separateTotal, 180);
+  assert.equal(result.recommendation!.estimatedValue.price, 120);
 });
 
 test("RE3. práctica intensiva explícita → P3", () => {
@@ -119,14 +117,14 @@ test("RE4. SIMULACRO solo → simulacro individual (SERVICE)", () => {
 test("RE5. categoría != A1 → no inventar paquete", () => {
   const result = evaluateRecommendation({
     activeIntent: "PRACTICA",
-    slots: { categoria: "A2B" },
+    slots: { categoria: "A2" },
     state: makeState({ activeIntent: "PRACTICA" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A2B", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 1, isNewUser: true, activeIntent: "PRACTICA", phase: "GATHERING", slotsCollected: { categoria: "A2B" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A2", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 1, isNewUser: true, activeIntent: "PRACTICA", phase: "GATHERING", slotsCollected: { categoria: "A2" }, missingSlots: [] },
     }),
   });
-  // No P1/P2/P3/P5 para A2B
+  // No P1/P2/P3/P5 para A2
   if (result.recommendation) {
     assert.notEqual(result.recommendation.type, "PACKAGE");
   }
@@ -190,7 +188,7 @@ test("RE9. objeción P1 + cliente sabe manejar → reevaluar (P2)", () => {
   assert.equal(result.recommendation!.target, "P2"); // No P1
 });
 
-test("RE10. P2 ahorro S/20", () => {
+test("RE10. P2 precio S/120", () => {
   const result = evaluateRecommendation({
     activeIntent: "PRACTICA",
     slots: { categoria: "A1", hora: "10:00" },
@@ -201,8 +199,7 @@ test("RE10. P2 ahorro S/20", () => {
     }),
   });
   assert.ok(result.recommendation);
-  assert.equal(result.recommendation!.estimatedValue.savings, 20);
-  assert.equal(result.recommendation!.estimatedValue.separateTotal, 180);
+  assert.equal(result.recommendation!.estimatedValue.price, 120);
 });
 
 test("RE11. examen día → recomendación contextual simulacro", () => {
@@ -237,63 +234,61 @@ test("RE12. A1 + ALQUILER_EXAMEN → vehículo individual", () => {
   assert.ok(result.recommendation!.target.includes("Kia Picanto"));
 });
 
-test("RE13. A2B → minivan mecánica", () => {
+test("RE13. A2 → vehículo mecánico", () => {
   const result = evaluateRecommendation({
     activeIntent: "ALQUILER_EXAMEN",
-    slots: { categoria: "A2B" },
+    slots: { categoria: "A2" },
     state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A2B", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A2B" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A2", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A2" }, missingSlots: [] },
     }),
   });
   assert.ok(result.recommendation);
   assert.equal(result.recommendation!.type, "VEHICLE");
-  assert.ok(result.recommendation!.target.includes("minivan"));
-  assert.ok(result.recommendation!.target.includes("mecánica"));
-});
-
-test("RE14. A3A → Cusco mecánica", () => {
-  const result = evaluateRecommendation({
-    activeIntent: "ALQUILER_EXAMEN",
-    slots: { categoria: "A3A" },
-    state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
-    context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A3A", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3A" }, missingSlots: [] },
-    }),
-  });
-  assert.ok(result.recommendation);
-  assert.ok(result.recommendation!.target.includes("Cusco"));
-  assert.ok(result.recommendation!.target.includes("mecánica"));
-});
-
-test("RE15. A3C → Hyundai 0 km mecánico", () => {
-  const result = evaluateRecommendation({
-    activeIntent: "ALQUILER_EXAMEN",
-    slots: { categoria: "A3C" },
-    state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
-    context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A3C", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3C" }, missingSlots: [] },
-    }),
-  });
-  assert.ok(result.recommendation);
-  assert.ok(result.recommendation!.target.includes("Hyundai"));
   assert.ok(result.recommendation!.target.includes("mecánico"));
 });
 
-test("RE16. A3B → no inventar", () => {
+test("RE14. A3 → vehículo mecánico", () => {
   const result = evaluateRecommendation({
     activeIntent: "ALQUILER_EXAMEN",
-    slots: { categoria: "A3B" },
+    slots: { categoria: "A3" },
     state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A3B", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3B" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A3", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3" }, missingSlots: [] },
     }),
   });
-  assert.equal(result.recommendation, null); // No inventar vehículo para A3B
+  assert.ok(result.recommendation);
+  assert.equal(result.recommendation!.type, "VEHICLE");
+  assert.ok(result.recommendation!.target.includes("mecánico"));
+});
+
+test("RE15. A3 → vehículo mecánico (categoría mayor)", () => {
+  const result = evaluateRecommendation({
+    activeIntent: "ALQUILER_EXAMEN",
+    slots: { categoria: "A3" },
+    state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
+    context: makeContext({
+      clientProfile: { hasReservations: false, lastCategory: "A3", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3" }, missingSlots: [] },
+    }),
+  });
+  assert.ok(result.recommendation);
+  assert.ok(result.recommendation!.target.includes("mecánico"));
+});
+
+test("RE16. categoría no válida → sin recomendación", () => {
+  const result = evaluateRecommendation({
+    activeIntent: "ALQUILER_EXAMEN",
+    slots: { categoria: "X99" },
+    state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
+    context: makeContext({
+      clientProfile: { hasReservations: false, lastCategory: "X99", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "X99" }, missingSlots: [] },
+    }),
+  });
+  assert.equal(result.recommendation, null);
 });
 
 test("RE17. recomendación sin suficientes datos → pedir diagnóstico", () => {
@@ -420,44 +415,44 @@ test("RE24. ALQUILER_EXAMEN sin categoría → diagnóstico", () => {
   assert.equal(result.diagnosisNeeded, true);
 });
 
-test("RE25. A2A PRACTICA → servicio individual (no paquete)", () => {
+test("RE25. A2 PRACTICA → servicio individual (no paquete)", () => {
   const result = evaluateRecommendation({
     activeIntent: "PRACTICA",
-    slots: { categoria: "A2A" },
+    slots: { categoria: "A2" },
     state: makeState({ activeIntent: "PRACTICA" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A2A", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 1, isNewUser: true, activeIntent: "PRACTICA", phase: "GATHERING", slotsCollected: { categoria: "A2A" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A2", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 1, isNewUser: true, activeIntent: "PRACTICA", phase: "GATHERING", slotsCollected: { categoria: "A2" }, missingSlots: [] },
     }),
   });
   assert.ok(result.recommendation);
   assert.equal(result.recommendation!.type, "SERVICE");
   assert.equal(result.recommendation!.target, "PRACTICA");
-  assert.equal(result.recommendation!.estimatedValue.price, 60);
+  assert.equal(result.recommendation!.estimatedValue.price, 70);
 });
 
-test("RE26. A2A ALQUILER_EXAMEN → vehículo genérico", () => {
+test("RE26. A2 ALQUILER_EXAMEN → vehículo mecánico", () => {
   const result = evaluateRecommendation({
     activeIntent: "ALQUILER_EXAMEN",
-    slots: { categoria: "A2A" },
+    slots: { categoria: "A2" },
     state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A2A", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A2A" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A2", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A2" }, missingSlots: [] },
     }),
   });
   assert.ok(result.recommendation);
   assert.equal(result.recommendation!.type, "VEHICLE");
 });
 
-test("RE27. PRACTICA A3C → servicio individual precio 100", () => {
+test("RE27. PRACTICA A3 → servicio individual precio 100", () => {
   const result = evaluateRecommendation({
     activeIntent: "PRACTICA",
-    slots: { categoria: "A3C" },
+    slots: { categoria: "A3" },
     state: makeState({ activeIntent: "PRACTICA" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A3C", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 1, isNewUser: true, activeIntent: "PRACTICA", phase: "GATHERING", slotsCollected: { categoria: "A3C" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A3", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 1, isNewUser: true, activeIntent: "PRACTICA", phase: "GATHERING", slotsCollected: { categoria: "A3" }, missingSlots: [] },
     }),
   });
   assert.ok(result.recommendation);
@@ -482,20 +477,19 @@ test("RE28. examen día + simulacro ya agendado → no duplicar", () => {
   assert.equal(result.recommendation!.target, "SIMULACRO");
 });
 
-test("RE29. A3C ALQUILER_EXAMEN → Hyundai 0 km", () => {
+test("RE29. A3 ALQUILER_EXAMEN → vehículo mecánico", () => {
   const result = evaluateRecommendation({
     activeIntent: "ALQUILER_EXAMEN",
-    slots: { categoria: "A3C" },
+    slots: { categoria: "A3" },
     state: makeState({ activeIntent: "ALQUILER_EXAMEN" }),
     context: makeContext({
-      clientProfile: { hasReservations: false, lastCategory: "A3C", lastActivity: null, hasPackage: false },
-      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3C" }, missingSlots: [] },
+      clientProfile: { hasReservations: false, lastCategory: "A3", lastActivity: null, hasPackage: false },
+      conversationContext: { messageCount: 2, isNewUser: false, activeIntent: "ALQUILER_EXAMEN", phase: "GATHERING", slotsCollected: { categoria: "A3" }, missingSlots: [] },
     }),
   });
   assert.ok(result.recommendation);
   assert.equal(result.recommendation!.type, "VEHICLE");
-  assert.ok(result.recommendation!.target.includes("Hyundai"));
-  assert.ok(result.recommendation!.target.includes("0 km"));
+  assert.ok(result.recommendation!.target.includes("mecánico"));
 });
 
 test("RE30. SERVICE (SIMULACRO) tiene requiresConfirmation true", () => {
@@ -591,7 +585,7 @@ test("RE-NEW5. P2 por necesidad de 1 hora", () => {
   });
   assert.ok(result.recommendation);
   assert.equal(result.recommendation!.target, "P2");
-  assert.equal(result.recommendation!.estimatedValue.savings, 20);
+  assert.equal(result.recommendation!.estimatedValue.price, 120);
 });
 
 test("RE-NEW6. P3 NO se activa por messageCount ni notas", () => {

@@ -138,7 +138,7 @@ export function evaluateRecommendation(input: RecommendationInput): Recommendati
       recommendation: null,
       diagnosisNeeded: true,
       diagnosisQuestions: [
-        "¿Qué categoría de licencia necesitas? (A1 para auto, A2A para auto, A2B para camioneta, A3A para bus, A3B para camión, A3C para camión grande)",
+        "¿Qué categoría de licencia necesitas? (A1 para auto, A2 para camioneta/van, A3 para bus/camión)",
       ],
     };
   }
@@ -330,20 +330,19 @@ export function evaluateRecommendation(input: RecommendationInput): Recommendati
       recommendation: {
         type: "PACKAGE",
         target: "P2",
-        reason: "El Paquete 2 incluye 1 hora de práctica en circuito oficial (2 x 30 min) más el alquiler de vehículo para tu examen. Por separado costaría S/180, con el paquete ahorras S/20.",
+        reason: "El Paquete 2 incluye 1 hora de práctica en circuito oficial más el alquiler de vehículo para tu examen.",
         confidence: 0.9,
         supportingFacts: [
-          "2 prácticas de 30 min = 1 hora en circuito oficial",
+          "1 hora de práctica en circuito oficial",
           "Incluye alquiler de vehículo para examen",
           "Instructor profesional",
           `Precio: S/${rules.paquetes.P2.precio}`,
-          `Ahorro: S/${rules.paquetes.P2.ahorro} vs S/${rules.paquetes.P2.precio_separado} por separado`,
         ],
         alternatives: ["PRACTICA individual", "P5"],
         estimatedValue: {
           price: rules.paquetes.P2.precio,
-          savings: rules.paquetes.P2.ahorro,
-          separateTotal: rules.paquetes.P2.precio_separado,
+          savings: null,
+          separateTotal: null,
         },
         requiresConfirmation: true,
       },
@@ -384,15 +383,6 @@ function recommendVehicle(
     };
   }
 
-  // A3B: no inventar
-  if ("tipo" in vehiculo && vehiculo.tipo === "no_confirmado") {
-    return {
-      recommendation: null,
-      diagnosisNeeded: false,
-      diagnosisQuestions: [],
-    };
-  }
-
   let target: string;
   let reason: string;
   const facts: string[] = [];
@@ -403,19 +393,14 @@ function recommendVehicle(
     facts.push("Kia Picanto 2026 automático (preferencia)");
     facts.push("Opción mecánica también disponible");
     facts.push("Recomendación: automático para facilitar conducción");
-  } else if (categoria === "A2B") {
-    target = "minivan mecánica";
-    reason = "Para A2B el vehículo es una minivan mecánica.";
-    facts.push("A2B: minivan mecánica");
-    facts.push("A partir de A2B: vehículos mecánicos");
-  } else if (categoria === "A3A") {
-    target = "Cusco mecánica";
-    reason = "Para A3A el vehículo es un Cusco mecánico.";
-    facts.push("A3A: Cusco mecánico");
-  } else if (categoria === "A3C") {
-    target = "Hyundai 0 km mecánico";
-    reason = "Para A3C el vehículo es un camión Hyundai 0 km mecánico. Prácticas y examen con este vehículo.";
-    facts.push("A3C: camión Hyundai 0 km mecánico");
+  } else if (categoria === "A2") {
+    target = "vehículo mecánico";
+    reason = "Para A2 el vehículo es mecánico.";
+    facts.push("A2: vehículo mecánico");
+  } else if (categoria === "A3") {
+    target = "vehículo mecánico";
+    reason = "Para A3 el vehículo es mecánico.";
+    facts.push("A3: vehículo mecánico");
   } else {
     target = "vehículo según categoría";
     reason = `Vehículo para categoría ${categoria}.`;

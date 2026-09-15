@@ -112,7 +112,7 @@ test("SM4. Extraer múltiples datos 'A1 y martes'", () => {
 });
 
 test("SM5. Slot existente se actualiza si usuario proporciona nuevo valor", () => {
-  const state = makeState({ activeIntent: "RESERVA", slots: { categoria: "A2A" } });
+  const state = makeState({ activeIntent: "RESERVA", slots: { categoria: "A2" } });
   const result = extractSlots("práctica A1", "RESERVA", state);
   assert.equal(result.updated.categoria, "A1"); // FIX1: se actualiza con el nuevo valor
 });
@@ -387,29 +387,27 @@ test("PKG1. Paquete 1 para cliente sin proceso iniciado", () => {
   const kb = createKnowledgeBase();
   const rules = kb.getBusinessRules();
   assert.equal(rules.paquetes.P1.precio, 680);
-  assert.ok(rules.paquetes.P1.incluye.includes("5_prácticas_30min_circuito_oficial"));
+  assert.ok(rules.paquetes.P1.incluye.includes("examen_médico"));
+  assert.ok(rules.paquetes.P1.incluye.includes("prácticas_circuito_oficial"));
 });
 
 test("PKG2. Paquete 2 para cliente con necesidad de una hora", () => {
   const kb = createKnowledgeBase();
   const rules = kb.getBusinessRules();
-  assert.equal(rules.paquetes.P2.precio, 160);
-  assert.equal(rules.paquetes.P2.ahorro, 20);
+  assert.equal(rules.paquetes.P2.precio, 120);
 });
 
-test("PKG3. cálculo correcto de ahorro Paquete 2: S/180 → S/160", () => {
+test("PKG3. Paquete 2 = S/120", () => {
   const kb = createKnowledgeBase();
   const p2 = kb.getBusinessRules().paquetes.P2;
-  assert.equal(p2.precio_separado, 180);
-  assert.equal(p2.precio, 160);
-  assert.equal(p2.ahorro, 20);
+  assert.equal(p2.precio, 120);
 });
 
 test("PKG4. Paquete 3 para cliente que quiere práctica intensiva", () => {
   const kb = createKnowledgeBase();
   const p3 = kb.getBusinessRules().paquetes.P3;
   assert.equal(p3.precio, 360);
-  assert.ok(p3.incluye.includes("2_prácticas_45min_circuito_alternativo"));
+  assert.ok(p3.incluye.includes("prácticas_circuito_alternativo"));
 });
 
 test("PKG5. Paquete 5 = S/260", () => {
@@ -424,7 +422,7 @@ test("PKG6. paquetes solo A1", () => {
 
 test("PKG7. otra categoría no recibe precio inventado", () => {
   const kb = createKnowledgeBase();
-  // No hay paquetes definidos para A2A, A2B, etc.
+  // No hay paquetes definidos para A2, A3, etc.
   assert.equal(kb.getBusinessRules().paquetes.disponibles_solo_A1, true);
 });
 
@@ -501,25 +499,25 @@ test("VEH1. vehículo A1 automático (Kia Picanto 2026)", () => {
   assert.ok(v.modelo.includes("Kia Picanto"));
 });
 
-test("VEH2. vehículo A2B mecánico", () => {
+test("VEH2. vehículo A2 mecánico", () => {
   const kb = createKnowledgeBase();
-  assert.equal(kb.getBusinessRules().vehiculos.A2B.mecanica, true);
+  assert.equal(kb.getBusinessRules().vehiculos.A2.mecanica, true);
 });
 
-test("VEH3. vehículo A3A mecánico", () => {
+test("VEH3. vehículo A3 mecánico", () => {
   const kb = createKnowledgeBase();
-  assert.equal(kb.getBusinessRules().vehiculos.A3A.mecanica, true);
+  assert.equal(kb.getBusinessRules().vehiculos.A3.mecanica, true);
 });
 
-test("VEH4. vehículo A3C mecánico", () => {
+test("VEH4. vehículo A3 mecánico (verificación)", () => {
   const kb = createKnowledgeBase();
-  assert.equal(kb.getBusinessRules().vehiculos.A3C.mecanica, true);
+  assert.equal(kb.getBusinessRules().vehiculos.A3.mecanica, true);
 });
 
-test("VEH5. A3B sin dato confirmado → no inventar", () => {
+test("VEH5. A2 y A3 son vehículos mecánicos", () => {
   const kb = createKnowledgeBase();
-  assert.equal(kb.getBusinessRules().vehiculos.A3B.tipo, "no_confirmado");
-  assert.ok(kb.getBusinessRules().vehiculos.A3B.nota.includes("NO inventar"));
+  assert.equal(kb.getBusinessRules().vehiculos.A2.mecanica, true);
+  assert.equal(kb.getBusinessRules().vehiculos.A3.mecanica, true);
 });
 
 // ── Tests de preservación adicionales ────────────────────────────
@@ -556,14 +554,13 @@ test("COM1. Paquete 1 para usuario sin iniciar proceso", () => {
   const p1 = kb.getBusinessRules().paquetes.P1;
   assert.equal(p1.precio, 680);
   assert.ok(p1.incluye.includes("examen_médico"));
-  assert.ok(p1.incluye.includes("5_prácticas_30min_circuito_oficial"));
+  assert.ok(p1.incluye.includes("prácticas_circuito_oficial"));
 });
 
 test("COM2. Paquete 2 para usuario que quiere 1 hora", () => {
   const kb = createKnowledgeBase();
   const p2 = kb.getBusinessRules().paquetes.P2;
-  assert.equal(p2.precio, 160);
-  assert.equal(p2.ahorro, 20);
+  assert.equal(p2.precio, 120);
 });
 
 test("COM3. Paquete 3 para práctica intensiva", () => {
@@ -585,7 +582,7 @@ test("COM5. objeción al precio no obliga paquete incorrecto", () => {
   // Esto es comportamiento del SYSTEM_PROMPT, no del motor
   // Verificar que P2 existe como alternativa
   const kb = createKnowledgeBase();
-  assert.equal(kb.getBusinessRules().paquetes.P2.precio, 160);
+  assert.equal(kb.getBusinessRules().paquetes.P2.precio, 120);
 });
 
 test("COM6. cambio de recomendación cuando necesidad cambia", () => {

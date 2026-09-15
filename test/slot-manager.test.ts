@@ -65,21 +65,21 @@ test("SM-CORR2. 'miércoles a las 10' + 'mejor a las 11' → hora=11:00", () => 
   assert.equal(r2.updated.fecha, "miércoles"); // preservado
 });
 
-test("SM-CORR3. 'A1' + 'perdón, soy A2B' → categoria=A2B", () => {
+test("SM-CORR3. 'A1' + 'perdón, soy A2' → categoria=A2", () => {
   // Paso 1: extraer A1
   const state1 = makeState({ activeIntent: "PRACTICA", phase: "GATHERING" });
   const r1 = extractSlots("A1", "PRACTICA", state1);
   assert.equal(r1.extracted.categoria, "A1");
 
-  // Paso 2: "perdón, soy A2B" → debe actualizar a A2B
+  // Paso 2: "perdón, soy A2" → debe actualizar a A2
   const state2 = makeState({
     activeIntent: "PRACTICA",
     phase: "GATHERING",
     slots: { ...r1.updated },
   });
-  const r2 = extractSlots("perdón, soy A2B", "PRACTICA", state2);
-  assert.equal(r2.extracted.categoria, "A2B");
-  assert.equal(r2.updated.categoria, "A2B");
+  const r2 = extractSlots("perdón, soy A2", "PRACTICA", state2);
+  assert.equal(r2.extracted.categoria, "A2");
+  assert.equal(r2.updated.categoria, "A2");
 });
 
 test("SM-CORR4. 'oficial' + 'mejor alterno' → circuito=alternativo", () => {
@@ -136,8 +136,8 @@ test("SM-CONF3. hora=10:00 + hora=11:00 → conflicto resuelto", () => {
   assert.equal(conflict.resolution, "update");
 });
 
-test("SM-CONF4. categoria=A1 + categoria=A2B → conflicto resuelto", () => {
-  const conflict = detectSlotConflict("categoria", "A1", "A2B");
+test("SM-CONF4. categoria=A1 + categoria=A2 → conflicto resuelto", () => {
+  const conflict = detectSlotConflict("categoria", "A1", "A2");
   assert.equal(conflict.hasConflict, true);
   assert.equal(conflict.resolution, "update");
 });
@@ -345,7 +345,7 @@ test("KB-CIRC1. circuito alternativo = idéntico a oficial", () => {
   // Verificar que business-rules.json dice "idéntico" y NO "copia"
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const rules = require("../src/knowledge/business-rules.json");
-  const altText = rules.practica.circuitos.alternativo as string;
+  const altText = rules.practica.circuitos.alternativo.descripcion as string;
   assert.ok(
     altText.includes("idéntico"),
     `Expected "idéntico" in "${altText}"`,

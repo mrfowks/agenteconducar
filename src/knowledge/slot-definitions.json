@@ -10,10 +10,10 @@
       },
       {
         "name": "categoria",
-        "question": "¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)",
+        "question": "¿Qué categoría de licencia necesitas? (A1, A2 o A3)",
         "type": "enum",
         "required": true,
-        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+        "enum": ["A1", "A2", "A3"]
       },
       {
         "name": "circuito",
@@ -44,7 +44,7 @@
         "question": "¿Para qué categoría necesitas alquilar el vehículo?",
         "type": "enum",
         "required": true,
-        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+        "enum": ["A1", "A2", "A3"]
       },
       {
         "name": "fecha_examen",
@@ -62,7 +62,7 @@
         "question": "¿Qué categoría de licencia necesitas?",
         "type": "enum",
         "required": true,
-        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+        "enum": ["A1", "A2", "A3"]
       },
       {
         "name": "circuito",
@@ -93,7 +93,7 @@
         "question": "¿Qué categoría de licencia necesitas?",
         "type": "enum",
         "required": true,
-        "enum": ["A1", "A2A", "A2B", "A3A", "A3B", "A3C"]
+        "enum": ["A1", "A2", "A3"]
       },
       {
         "name": "circuito",

@@ -237,7 +237,7 @@ export function detectSlotConflict(
     return { hasConflict: true, resolution: "update" };
   }
 
-  // Conflicto de categoría: "A1" vs "A2B"
+  // Conflicto de categoría: "A1" vs "A2"
   if (slotName === "categoria") {
     return { hasConflict: true, resolution: "update" };
   }

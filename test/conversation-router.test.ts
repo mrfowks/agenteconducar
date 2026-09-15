@@ -296,8 +296,8 @@ test("2B2-12. slot previamente capturado se actualiza con nuevo valor explícito
   };
   
   // Mensaje con dato diferente al capturado → se actualiza (FIX1)
-  const result = extractSlots("quiero A2A", "RESERVA", state);
-  assert.equal(result.updated.categoria, "A2A"); // Se actualiza con el nuevo valor
+  const result = extractSlots("quiero A2", "RESERVA", state);
+  assert.equal(result.updated.categoria, "A2"); // Se actualiza con el nuevo valor
   assert.equal(result.updated.circuito, "oficial"); // Se preserva
 });
 
@@ -633,7 +633,7 @@ test("CC1. primer contacto PRACTICA: no REPROMPT circuito sin explicar", async (
   const rec = {
     recommendation: null,
     diagnosisNeeded: true,
-    diagnosisQuestions: ["¿Qué categoría de licencia necesitas? (A1, A2A, A2B, A3A, A3B o A3C)"],
+    diagnosisQuestions: ["¿Qué categoría de licencia necesitas? (A1, A2 o A3)"],
   };
 
   const result = decideResponse({
